@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.tripmate.tripmate_app",
+      "sha256_cert_fingerprints": [
+        "0F:62:E1:06:50:90:03:74:B5:E8:E8:B1:37:5C:B9:00:D2:D2:19:BE:65:59:C4:F0:AA:DB:8D:65:85:3D:39:56"
+      ]
+    }
+  }
+]

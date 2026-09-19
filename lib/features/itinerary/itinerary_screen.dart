@@ -1,0 +1,1044 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
+import 'dart:convert';
+import '../auth/presentation/auth_provider.dart' show dioClientProvider;
+import '../places/presentation/widgets/place_gallery.dart';
+import '../../core/network/api_error.dart';
+import '../../core/data/refresh.dart';
+import 'ai_questions_sheet.dart';
+
+const _fallbacks = [
+  'assets/images/trip_hero.jpg',
+  'assets/images/trip_goa.jpg',
+  'assets/images/splash_road.jpg',
+  'assets/images/auth_travel.jpg',
+];
+
+/// Stops for a timeline leg: persisted stopsJson string, else legacy list.
+List<String> _stopsOf(Map<String, dynamic> item) {
+  final raw = item['stops'];
+  if (raw is List) {
+    return raw.map((e) => e.toString()).toList();
+  }
+  final js = item['stopsJson']?.toString() ?? '';
+  if (js.isEmpty) return [];
+  try {
+    final dec = jsonDecode(js);
+    if (dec is List) return dec.map((e) => e.toString()).toList();
+  } catch (_) {}
+  return [];
+}
+
+/// Travel-journal itinerary: vertical timeline grouped by day, leg cards
+/// with image, distance, travel time, stay and food.
+class ItineraryScreen extends ConsumerStatefulWidget {
+  final String tripId;
+  const ItineraryScreen({super.key, required this.tripId});
+
+  @override
+  ConsumerState<ItineraryScreen> createState() => _State();
+}
+
+class _State extends ConsumerState<ItineraryScreen> {
+  Map<String, dynamic>? _trip;
+  List<Map<String, dynamic>> _items = [];
+  Map<int, Map<String, dynamic>> _places = {};
+  bool _busy = false;
+  bool _loading = true;
+  final int _imgSeed = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant ItineraryScreen old) {
+    super.didUpdateWidget(old);
+    if (old.tripId != widget.tripId) _load();
+  }
+
+  Future<void> _load() async {
+    final dio = ref.read(dioClientProvider).dio;
+    try {
+      final res = await Future.wait([
+        dio.get('/api/trips/${widget.tripId}'),
+        dio.get('/api/trips/${widget.tripId}/itinerary'),
+        dio.get('/api/trips/${widget.tripId}/places'),
+      ]);
+      if (!mounted) return;
+      final places = <int, Map<String, dynamic>>{};
+      for (final e in (res[2].data['data'] as List)) {
+        final p = Map<String, dynamic>.from(e['place']);
+        places[(p['id'] as num).toInt()] = p;
+      }
+      setState(() {
+        _trip = Map<String, dynamic>.from(res[0].data['data'] as Map);
+        _items = ((res[1].data['data'] as List))
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+        _places = places;
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// AI flow: quota -> detailed questions -> propose -> full editor.
+  Future<void> _aiPlan() async {
+    final dio = ref.read(dioClientProvider).dio;
+    try {
+      final q = await dio
+          .get('/api/trips/${widget.tripId}/itinerary/ai/quota');
+      final remaining =
+          ((q.data['data']['remaining'] ?? 0) as num).toInt();
+      if (!mounted) return;
+      if (remaining <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Free AI plans used (2/2 for this trip). Use Quick plan.')),
+        );
+        return;
+      }
+      final answers = await showModalBottomSheet<Map<String, dynamic>>(
+        context: context,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        builder: (_) => AiQuestionsSheet(remaining: remaining),
+      );
+      if (answers == null || !mounted) return;
+      setState(() => _busy = true);
+      final res = await dio.post(
+        '/api/trips/${widget.tripId}/itinerary/ai/propose',
+        data: answers,
+      );
+      final pid = res.data['data']['proposalId'].toString();
+      if (!mounted) return;
+      context.go('/trips/${widget.tripId}/itinerary/ai/$pid');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(apiErrorMessage(e))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _generate() async {
+    setState(() => _busy = true);
+    try {
+      final dio = ref.read(dioClientProvider).dio;
+      final days = (_trip?['daysCount'] as num?)?.toInt() ?? 5;
+      await dio.put(
+          '/api/trips/${widget.tripId}/itinerary/generate?days=$days');
+      bumpData(ref);
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(apiErrorMessage(e))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  String _cleanTitle(String t) {
+    var s = t;
+    for (final suffix in [' — journey begins', ' — arrival', ' · on the road']) {
+      if (s.endsWith(suffix)) {
+        s = s.substring(0, s.length - suffix.length);
+      }
+    }
+    final m = RegExp(r'^(.*) · day \d+$').firstMatch(s);
+    if (m != null) s = m.group(1)!;
+    return s.trim();
+  }
+
+  String _legAnchor(int dayNo, bool isFrom) {
+    final byDay = <int, List<Map<String, dynamic>>>{};
+    for (final it in _items) {
+      byDay.putIfAbsent((it['dayNo'] as num?)?.toInt() ?? 1, () => []).add(it);
+    }
+    final days = byDay.keys.toList()..sort();
+    final idx = days.indexOf(dayNo);
+    if (isFrom) {
+      if (idx > 0) {
+        final t = _cleanTitle(
+            (byDay[days[idx - 1]]!.last['title'] ?? '').toString());
+        if (t.isNotEmpty) return t;
+      }
+      return _trip?['startName']?.toString() ?? '';
+    }
+    if (idx >= 0 && idx < days.length - 1) {
+      final t = _cleanTitle(
+          (byDay[days[idx]]!.last['title'] ?? '').toString());
+      if (t.isNotEmpty) return t;
+    }
+    return _trip?['destName']?.toString() ?? '';
+  }
+
+  /// Day-wise AI: prefilled leg sheet -> suggest -> results (stamped on add).
+  Future<void> _suggestDay(int day, String from, String to) async {
+    final dio = ref.read(dioClientProvider).dio;
+    try {
+      final q = await dio
+          .get('/api/trips/${widget.tripId}/places/ai/quota');
+      final remaining =
+          ((q.data['data']['remaining'] ?? 0) as num).toInt();
+      if (!mounted) return;
+      if (remaining <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content:
+                Text('Free suggestions used (5/5 for this trip).')),
+        );
+        return;
+      }
+      final req = await showModalBottomSheet<_DaySuggestReq>(
+        context: context,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        builder: (_) => _DaySuggestSheet(
+            day: day, from: from, to: to, remaining: remaining),
+      );
+      if (req == null || !mounted) return;
+      final res = await dio.post(
+        '/api/trips/${widget.tripId}/places/ai/suggest',
+        data: {
+          'count': req.count,
+          'dayNo': day,
+          'from': req.from,
+          'to': req.to,
+        },
+      );
+      final sid = res.data['data']['suggestionId'].toString();
+      if (!mounted) return;
+      context.go('/trips/${widget.tripId}/places/ai/$sid?day=$day');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(apiErrorMessage(e))),
+        );
+      }
+    }
+  }
+
+  String get _routeTitle {
+    final s = _trip?['startName']?.toString() ?? '';
+    final d = _trip?['destName']?.toString() ?? '';
+    if (s.isNotEmpty && d.isNotEmpty) return '$s → $d';
+    return (_trip?['tripName'] ?? 'Itinerary').toString();
+  }
+
+  String _dayDate(int day) {
+    final s = _trip?['startDate']?.toString();
+    if (s == null) return 'Day $day';
+    try {
+      final date =
+          DateTime.parse(s).add(Duration(days: day - 1));
+      return 'Day $day · ${DateFormat('EEE, d MMM').format(date)}';
+    } catch (_) {
+      return 'Day $day';
+    }
+  }
+
+  String _minsLabel(dynamic mins) {
+    if (mins == null) return '–';
+    final m = (mins as num).toInt();
+    if (m < 60) return '$m min';
+    final h = m ~/ 60;
+    final r = m % 60;
+    if (r == 0) return '$h Hours';
+    return '${h}h ${r}m';
+  }
+
+  /// Tap a stop chip: open its place page, or explain when missing.
+  void _openStopByName(String name) {
+    final needle = name.toLowerCase();
+    for (final p in _places.values) {
+      if ((p['name']?.toString() ?? '').toLowerCase() == needle) {
+        context.go('/trips/${widget.tripId}/places/${p['id']}');
+        return;
+      }
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('“$name” is not added as a place yet')),
+    );
+  }
+
+  /// Tap a day: linked place opens its detail page, otherwise a day sheet.
+  void _openStop(Map<String, dynamic> item) {
+    final pid = (item['placeId'] as num?)?.toInt();
+    if (pid != null) {
+      context.go('/trips/${widget.tripId}/places/$pid');
+      return;
+    }
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetCtx) => _DayInfoSheet(
+        item: item,
+        minsLabel: _minsLabel,
+        onOpenPlaces: () {
+          Navigator.pop(sheetCtx);
+          context.go('/trips/${widget.tripId}/places');
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.listen(dataVersionProvider, (_, _) => _load());
+    ref.listen(tabRefreshRequestProvider, (_, req) {
+      if (req != null && req.tab == 2) _load();
+    });
+    final byDay = <int, List<Map<String, dynamic>>>{};
+    for (final it in _items) {
+      byDay.putIfAbsent((it['dayNo'] as num?)?.toInt() ?? 1, () => []).add(it);
+    }
+    final days = byDay.keys.toList()..sort();
+    final skeleton =
+        _items.isNotEmpty && _items.every((e) => e['placeId'] == null);
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        title: Text(_routeTitle),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go('/trips/${widget.tripId}/map'),
+        ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _busy ? null : _aiPlan,
+        label: Text(_busy ? 'Working…' : '✨ AI Plan'),
+        icon: const Icon(Icons.auto_awesome),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : days.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(22),
+                          ),
+                          child: const Icon(
+                            Icons.timeline,
+                            color: Color(0xFF2563EB),
+                            size: 36,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        const Text(
+                          'No itinerary yet',
+                          style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Add places with locations and votes for a detailed day-wise plan — or generate a route skeleton right now.',
+                          textAlign: TextAlign.center,
+                          style:
+                              TextStyle(color: Color(0xFF64748B)),
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          height: 50,
+                          child: FilledButton.icon(
+                            onPressed: _busy ? null : _generate,
+                            icon:
+                                const Icon(Icons.auto_awesome),
+                            label: Text(_busy
+                                ? 'Generating…'
+                                : 'Quick plan'),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: () => context.go(
+                              '/trips/${widget.tripId}/places'),
+                          icon: const Icon(Icons.add_location_alt,
+                              size: 18),
+                          label: const Text('Add places first'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView.builder(
+                    padding:
+                        const EdgeInsets.fromLTRB(20, 12, 20, 100),
+                    itemCount: days.length + (skeleton ? 1 : 0),
+                    itemBuilder: (_, i) {
+                      if (skeleton && i == 0) {
+                        return Padding(
+                          padding:
+                              const EdgeInsets.only(bottom: 12),
+                          child: _SkeletonBanner(
+                            onAddPlaces: () => context.go(
+                                '/trips/${widget.tripId}/places'),
+                          ),
+                        );
+                      }
+                      final k = skeleton ? i - 1 : i;
+                      final dayNo = days[k];
+                      return _DaySection(
+                        label: _dayDate(dayNo),
+                        isLast: k == days.length - 1,
+                        onSuggest: () => _suggestDay(
+                          dayNo,
+                          _legAnchor(dayNo, true),
+                          _legAnchor(dayNo, false),
+                        ),
+                        children: [
+                          for (var j = 0;
+                              j < byDay[days[k]]!.length;
+                              j++) ...[
+                          _LegCard(
+                            item: byDay[days[k]]![j],
+                            onTap: () =>
+                                _openStop(byDay[days[k]]![j]),
+                            onStopTap: _openStopByName,
+                              place: _places[(
+                                  byDay[days[k]]![j]['placeId']
+                                      as num?)
+                                  ?.toInt()],
+                              image: _fallbacks[
+                                  (_imgSeed + k + j) %
+                                      _fallbacks.length],
+                              minsLabel: _minsLabel,
+                            ),
+                            if (j < byDay[days[k]]!.length - 1)
+                              const _LegConnector(),
+                          ],
+                        ],
+                      );
+                    },
+                  ),
+                ),
+    );
+  }
+}
+
+class _SkeletonBanner extends StatelessWidget {
+  final VoidCallback onAddPlaces;
+  const _SkeletonBanner({required this.onAddPlaces});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      color: const Color(0xFFEFF6FF),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            const Icon(Icons.auto_awesome,
+                color: Color(0xFF2563EB)),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Route skeleton — add places with votes, then regenerate for a detailed plan.',
+                style: TextStyle(fontSize: 13, height: 1.4),
+              ),
+            ),
+            TextButton(
+              onPressed: onAddPlaces,
+              child: const Text('Add places'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DaySuggestReq {
+  final int count;
+  final String from;
+  final String to;
+  _DaySuggestReq(
+      {required this.count, required this.from, required this.to});
+}
+
+class _DaySuggestSheet extends StatefulWidget {
+  final int day;
+  final String from;
+  final String to;
+  final int remaining;
+  const _DaySuggestSheet({
+    required this.day,
+    required this.from,
+    required this.to,
+    required this.remaining,
+  });
+
+  @override
+  State<_DaySuggestSheet> createState() => _DaySuggestSheetState();
+}
+
+class _DaySuggestSheetState extends State<_DaySuggestSheet> {
+  late final _from = TextEditingController(text: widget.from);
+  late final _to = TextEditingController(text: widget.to);
+  int _count = 5;
+
+  @override
+  void dispose() {
+    _from.dispose();
+    _to.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 12,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE2E8F0),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '✨ Day ${widget.day} picks',
+              style: const TextStyle(
+                  fontSize: 19, fontWeight: FontWeight.w800),
+            ),
+            Text(
+              '${widget.remaining} of 5 suggestion batches left · 1 day = 1 chance',
+              style: const TextStyle(
+                  fontSize: 12, color: Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 12),
+            _sheetField(_from, 'From'),
+            const SizedBox(height: 8),
+            _sheetField(_to, 'To'),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              children: [3, 5, 8]
+                  .map((c) => ChoiceChip(
+                        label: Text('$c places'),
+                        selected: _count == c,
+                        onSelected: (_) =>
+                            setState(() => _count = c),
+                      ))
+                  .toList(),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              height: 52,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                onPressed: () => Navigator.pop(
+                    context,
+                    _DaySuggestReq(
+                        count: _count,
+                        from: _from.text.trim(),
+                        to: _to.text.trim())),
+                icon:
+                    const Icon(Icons.auto_awesome, size: 18),
+                label: const Text('Suggest stops'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sheetField(TextEditingController c, String hint) {
+    return TextField(
+      controller: c,
+      decoration: InputDecoration(
+        hintText: hint,
+        filled: true,
+        fillColor: const Color(0xFFF1F5F9),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
+        ),
+      ),
+    );
+  }
+}
+
+class _DaySection extends StatelessWidget {
+  final String label;
+  final bool isLast;
+  final List<Widget> children;
+  final VoidCallback? onSuggest;
+  const _DaySection({
+    required this.label,
+    required this.isLast,
+    required this.children,
+    this.onSuggest,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2563EB),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  label.split('·').first.trim(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Container(
+                  width: 2.5,
+                  margin: const EdgeInsets.symmetric(vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isLast
+                        ? Colors.transparent
+                        : const Color(0xFF2563EB)
+                            .withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 6, bottom: 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          label,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF64748B),
+                          ),
+                        ),
+                      ),
+                      if (onSuggest != null)
+                        InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: onSuggest,
+                          child: const Padding(
+                            padding: EdgeInsets.all(4),
+                            child: Icon(
+                              Icons.auto_awesome,
+                              size: 18,
+                              color: Color(0xFF2563EB),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                ...children,
+                const SizedBox(height: 18),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LegCard extends StatelessWidget {
+  final Map<String, dynamic> item;
+  final Map<String, dynamic>? place;
+  final String image;
+  final String Function(dynamic) minsLabel;
+  final VoidCallback? onTap;
+  final void Function(String)? onStopTap;
+  const _LegCard({
+    required this.item,
+    required this.place,
+    required this.image,
+    required this.minsLabel,
+    this.onTap,
+    this.onStopTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final img = (place?['imageUrl'] as String?) ?? '';
+    final km = (item['distanceKm'] as num?)?.toDouble();
+    final stay = (item['stayNotes']?.toString() ?? '').isNotEmpty
+        ? item['stayNotes'].toString()
+        : null;
+    final food = (item['foodNotes']?.toString() ?? '').isNotEmpty
+        ? item['foodNotes'].toString()
+        : null;
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: onTap,
+      child: Card(
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          PlaceGallery(
+            placeId: (place?['id'] as num?)?.toInt(),
+            imageUrl: img.isNotEmpty ? img : null,
+            fallback: image,
+            height: 140,
+          ),
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  (item['title'] ?? '').toString(),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                if ((place?['address']?.toString() ?? '').isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      place!['address'].toString(),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 10),
+                if (_stopsOf(item).isNotEmpty) ...[
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: _stopsOf(item)
+                        .map((s) => ActionChip(
+                              label: Text(s,
+                                  style: const TextStyle(
+                                      fontSize: 11)),
+                              avatar: const Icon(
+                                  Icons.place_outlined,
+                                  size: 14,
+                                  color: Color(0xFF2563EB)),
+                              onPressed: () =>
+                                  onStopTap?.call(s),
+                            ))
+                        .toList(),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _Chip(
+                      icon: Icons.route,
+                      text: km == null ? '– KM' : '${km.round()} KM',
+                    ),
+                    _Chip(
+                      icon: Icons.schedule,
+                      text: minsLabel(item['driveMins']),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                _NoteRow(
+                  icon: Icons.hotel_outlined,
+                  label: 'Stay',
+                  value: stay ?? 'Not planned yet',
+                  dim: stay == null,
+                ),
+                const SizedBox(height: 6),
+                _NoteRow(
+                  icon: Icons.restaurant_outlined,
+                  label: 'Food',
+                  value: food ?? 'Not planned yet',
+                  dim: food == null,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      ),
+    );
+  }
+}
+
+class _DayInfoSheet extends StatelessWidget {
+  final Map<String, dynamic> item;
+  final String Function(dynamic) minsLabel;
+  final VoidCallback onOpenPlaces;
+  const _DayInfoSheet({
+    required this.item,
+    required this.minsLabel,
+    required this.onOpenPlaces,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final stops = _stopsOf(item);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE2E8F0),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            (item['title'] ?? '').toString(),
+            style: const TextStyle(
+                fontSize: 19, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          if (stops.isNotEmpty)
+            ...stops.map((s) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.place_outlined,
+                          size: 15, color: Color(0xFF2563EB)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                          child: Text(s.toString(),
+                              style:
+                                  const TextStyle(fontSize: 13))),
+                    ],
+                  ),
+                )),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              _Chip(
+                icon: Icons.route,
+                text: item['distanceKm'] == null
+                    ? '– KM'
+                    : '${(item['distanceKm'] as num).round()} KM',
+              ),
+              _Chip(
+                icon: Icons.schedule,
+                text: minsLabel(item['driveMins']),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _NoteRow(
+            icon: Icons.hotel_outlined,
+            label: 'Stay',
+            value: (item['stayNotes']?.toString() ?? '').isNotEmpty
+                ? item['stayNotes'].toString()
+                : (item['stay']?.toString() ?? '').isNotEmpty
+                    ? item['stay'].toString()
+                    : 'Not planned yet',
+            dim: ((item['stayNotes']?.toString() ?? '').isEmpty &&
+                (item['stay']?.toString() ?? '').isEmpty),
+          ),
+          const SizedBox(height: 6),
+          _NoteRow(
+            icon: Icons.restaurant_outlined,
+            label: 'Food',
+            value: (item['foodNotes']?.toString() ?? '').isNotEmpty
+                ? item['foodNotes'].toString()
+                : (item['food']?.toString() ?? '').isNotEmpty
+                    ? item['food'].toString()
+                    : 'Not planned yet',
+            dim: ((item['foodNotes']?.toString() ?? '').isEmpty &&
+                (item['food']?.toString() ?? '').isEmpty),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 50,
+            child: OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              onPressed: onOpenPlaces,
+              child: const Text('Open Places tab'),
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Tip: vote 👍 on these places to choose tonight\'s stay',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LegConnector extends StatelessWidget {
+  const _LegConnector();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          SizedBox(width: 8),
+          Icon(Icons.arrow_downward,
+              size: 18, color: Color(0xFF2563EB)),
+        ],
+      ),
+    );
+  }
+}
+
+class _Chip extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _Chip({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: const Color(0xFF2563EB)),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF1D4ED8),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NoteRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool dim;
+  const _NoteRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.dim,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: const Color(0xFF64748B)),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 44,
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF475569),
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 13,
+              color: dim
+                  ? const Color(0xFF94A3B8)
+                  : const Color(0xFF334155),
+              fontStyle: dim ? FontStyle.italic : FontStyle.normal,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
