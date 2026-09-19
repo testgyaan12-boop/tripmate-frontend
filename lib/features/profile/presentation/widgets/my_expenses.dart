@@ -60,6 +60,9 @@ class _State extends ConsumerState<MyExpensesSection> {
     final recent = ((_data?['recent'] as List?) ?? [])
         .map((e) => Map<String, dynamic>.from(e as Map))
         .toList();
+    final cats = ((_data?['monthByCategory'] as List?) ?? [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -84,6 +87,37 @@ class _State extends ConsumerState<MyExpensesSection> {
                         color: Colors.white70, fontSize: 13)),
               ],
             ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text('Category Breakdown',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+        const SizedBox(height: 4),
+        if (cats.isEmpty)
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('No spending this month.'),
+            ),
+          ),
+        Card(
+          child: Column(
+            children: [
+              for (final c in cats)
+                ListTile(
+                  dense: true,
+                  leading: Text(
+                      ExpenseService.emojiFor(
+                          (c['category'] ?? 'OTHER').toString()),
+                      style: const TextStyle(fontSize: 20)),
+                  title: Text(ExpenseService.labelFor(
+                      (c['category'] ?? 'OTHER').toString())),
+                  trailing: Text(
+                      '₹${((c['amount'] as num?) ?? 0).toStringAsFixed(0)}',
+                      style:
+                          const TextStyle(fontWeight: FontWeight.w700)),
+                ),
+            ],
           ),
         ),
         const SizedBox(height: 8),

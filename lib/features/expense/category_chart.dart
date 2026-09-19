@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'expense_service.dart';
 
-/// Expense Summary card: circular chart + category legend with percents.
-class CategoryChart extends StatelessWidget {
+/// Spec ExpenseCategoryChart: circular donut chart + category
+/// legend with percents and colorful icons.
+class ExpenseCategoryChart extends StatelessWidget {
   /// category -> spent amount
   final Map<String, double> data;
 
-  const CategoryChart({super.key, required this.data});
+  const ExpenseCategoryChart({super.key, required this.data});
 
   static const _colors = [
     Color(0xFF2563EB),

@@ -183,6 +183,8 @@ class _State extends ConsumerState<ExpenseDetailScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        _headerImage((e['category'] ?? 'OTHER').toString()),
+        const SizedBox(height: 12),
         Card(
           color: const Color(0xFF2563EB),
           child: Padding(
@@ -257,6 +259,50 @@ class _State extends ConsumerState<ExpenseDetailScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// Category header photo (Fuel / Stay / Food / default travel).
+  Widget _headerImage(String category) {
+    String asset = 'assets/images/trip_hero.jpg';
+    if (category == 'FUEL') {
+      asset = 'assets/images/splash_road.jpg';
+    } else if (category == 'STAY') {
+      asset = 'assets/images/trip_goa.jpg';
+    } else if (category == 'FOOD') {
+      asset = 'assets/images/auth_travel.jpg';
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: Stack(
+        children: [
+          Image.asset(asset,
+              height: 170, width: double.infinity, fit: BoxFit.cover),
+          Container(
+            height: 170,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withValues(alpha: 0.0),
+                  Colors.black.withValues(alpha: 0.45),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            left: 16,
+            bottom: 12,
+            child: Text(
+                ExpenseService.labelFor(category),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
     );
   }
 

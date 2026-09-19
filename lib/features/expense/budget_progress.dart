@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'expense_service.dart';
 
-/// Trip Budget card: estimated total, overall progress
+/// Spec BudgetProgressCard: estimated total, overall progress
 /// (Spent ₹X / ₹Y) and per-category planned vs spent bars.
-class BudgetProgress extends StatelessWidget {
+class BudgetProgressCard extends StatelessWidget {
   final Map<String, dynamic> budget;
   final VoidCallback onEdit;
 
-  const BudgetProgress(
+  const BudgetProgressCard(
       {super.key, required this.budget, required this.onEdit});
 
   @override

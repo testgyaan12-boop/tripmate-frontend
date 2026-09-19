@@ -9,8 +9,8 @@ import 'category_chart.dart';
 import 'budget_progress.dart';
 import 'expense_card.dart';
 
-/// Spec screen 1+2+7: Expenses dashboard with trip selector, summary
-/// cards, category chart, budget and the All Expenses list.
+/// Spec Screen 1: mobile expense dashboard — photo trip card, summary
+/// cards, donut chart, quick category chips, budget, recent expenses.
 class ExpensesScreen extends ConsumerStatefulWidget {
   final String? initialTripId;
   const ExpensesScreen({super.key, this.initialTripId});
@@ -21,12 +21,22 @@ class ExpensesScreen extends ConsumerStatefulWidget {
 
 class _State extends ConsumerState<ExpensesScreen> {
   String? _tripId;
+  String? _chip;
   List<Map<String, dynamic>> _trips = [];
   List<Map<String, dynamic>> _expenses = [];
   Map<String, dynamic> _settle = {};
   Map<String, dynamic> _budget = {};
   int? _me;
   bool _loading = true;
+
+  static const _chips = [
+    'FUEL',
+    'FOOD',
+    'STAY',
+    'TICKETS',
+    'SHOPPING',
+    'OTHER',
+  ];
 
   @override
   void initState() {
@@ -41,6 +51,7 @@ class _State extends ConsumerState<ExpensesScreen> {
     if (old.initialTripId != widget.initialTripId &&
         widget.initialTripId != null) {
       _tripId = widget.initialTripId;
+      _chip = null;
       _load();
     }
   }
@@ -96,6 +107,48 @@ class _State extends ConsumerState<ExpensesScreen> {
     return null;
   }
 
+  Map<String, dynamic> get _trip {
+    for (final t in _trips) {
+      if (((t['id'] as num?) ?? -1).toInt().toString() == _tripId) {
+        return t;
+      }
+    }
+    return {};
+  }
+
+  String get _route {
+    final s = (_trip['startName'] ?? '').toString();
+    final d = (_trip['destName'] ?? '').toString();
+    if (s.isNotEmpty && d.isNotEmpty) return '$s → $d';
+    return (_trip['tripName'] ?? 'Trip').toString();
+  }
+
+  String get _tripMeta {
+    final parts = <String>[];
+    final name = (_trip['tripName'] ?? '').toString();
+    if (name.isNotEmpty) parts.add(name);
+    parts.add(_daysLabel);
+    parts.add('$memberCount Members');
+    return parts.join(' • ');
+  }
+
+  String get _daysLabel {
+    final dc = (_trip['daysCount'] as num?)?.toInt();
+    if (dc != null && dc > 0) return '$dc Days';
+    try {
+      final s = _trip['startDate']?.toString();
+      final e = _trip['endDate']?.toString();
+      if (s != null && e != null) {
+        final days =
+            DateTime.parse(e).difference(DateTime.parse(s)).inDays + 1;
+        if (days > 0) return '$days Days';
+      }
+    } catch (_) {}
+    return 'Trip';
+  }
+
+  int get memberCount => ((_settle['members'] as List?) ?? []).length;
+
   Map<String, double> get _categoryData {
     final out = <String, double>{};
     for (final e in _expenses) {
@@ -106,20 +159,24 @@ class _State extends ConsumerState<ExpensesScreen> {
     return out;
   }
 
-  String get _tripTitle {
-    for (final t in _trips) {
-      if (((t['id'] as num?) ?? -1).toInt().toString() == _tripId) {
-        final s = (t['startName'] ?? '').toString();
-        final d = (t['destName'] ?? '').toString();
-        if (s.isNotEmpty && d.isNotEmpty) return '$s → $d';
-        return (t['tripName'] ?? 'Trip').toString();
-      }
-    }
-    return 'Select trip';
-  }
-
   double get _total => _expenses.fold<double>(
       0, (s, e) => s + (((e['amount'] as num?) ?? 0).toDouble()));
+
+  List<Map<String, dynamic>> get _recent {
+    final list = List<Map<String, dynamic>>.from(_expenses);
+    list.sort((a, b) {
+      final da = (a['expenseDate'] ?? a['createdAt'] ?? '').toString();
+      final db = (b['expenseDate'] ?? b['createdAt'] ?? '').toString();
+      final c = db.compareTo(da);
+      if (c != 0) return c;
+      return (((b['id'] as num?) ?? 0))
+          .compareTo(((a['id'] as num?) ?? 0));
+    });
+    final filtered = _chip == null
+        ? list
+        : list.where((e) => (e['category'] ?? '').toString() == _chip).toList();
+    return filtered.take(8).toList();
+  }
 
   Future<void> _delete(Map<String, dynamic> e) async {
     final id = (e['id'] as num?)?.toInt();
@@ -152,11 +209,62 @@ class _State extends ConsumerState<ExpensesScreen> {
     }
   }
 
+  Future<void> _pickTrip() async {
+    final v = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Select trip',
+                  style:
+                      TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+            ),
+            for (final t in _trips)
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFEFF6FF),
+                  child: Icon(Icons.route_outlined,
+                      color: Color(0xFF2563EB)),
+                ),
+                title: Text(
+                    '${(t['startName'] ?? '').toString()} → ${(t['destName'] ?? '').toString()}',
+                    style:
+                        const TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text((t['tripName'] ?? '').toString()),
+                trailing:
+                    ((t['id'] as num?) ?? -1).toInt().toString() == _tripId
+                        ? const Icon(Icons.check_circle,
+                            color: Color(0xFF2563EB))
+                        : null,
+                onTap: () => Navigator.pop(
+                    ctx,
+                    ((t['id'] as num?) ?? 0).toInt().toString()),
+              ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+    if (v != null && v != _tripId && mounted) {
+      context.go('/trips/$v/expenses');
+    }
+  }
+
   Future<void> _editBudget() async {
     final items = ((_budget['items'] as List?) ?? [])
         .map((e) => Map<String, dynamic>.from(e as Map))
         .toList();
-    final cats = ['FUEL', 'STAY', 'FOOD', 'ACTIVITIES', 'TICKETS', 'SHOPPING'];
+    final cats = [
+      'FUEL',
+      'STAY',
+      'FOOD',
+      'ACTIVITIES',
+      'TICKETS',
+      'SHOPPING'
+    ];
     final ctrls = <String, TextEditingController>{
       for (final c in cats)
         c: TextEditingController(
@@ -239,7 +347,26 @@ class _State extends ConsumerState<ExpensesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Expenses')),
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_outlined),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/home');
+            }
+          },
+        ),
+        title: const Text('Expenses'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.notifications_outlined),
+            onPressed: () => context.push('/notifications'),
+          ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _trips.isEmpty
@@ -258,47 +385,66 @@ class _State extends ConsumerState<ExpensesScreen> {
                 )
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: ListView(
+                  child: SingleChildScrollView(
                     padding: const EdgeInsets.only(bottom: 90),
-                    children: [
-                      _tripSelector(),
-                      _tripTotal(),
-                      _summary(),
-                      CategoryChart(data: _categoryData),
-                      BudgetProgress(
-                          budget: _budget, onEdit: _editBudget),
-                      const Padding(
-                        padding:
-                            EdgeInsets.fromLTRB(16, 10, 16, 2),
-                        child: Text('All Expenses',
-                            style: TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w800)),
-                      ),
-                      if (_expenses.isEmpty)
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _photoTripCard(),
+                        _tripTotal(),
+                        _summary(),
+                        ExpenseCategoryChart(data: _categoryData),
+                        _quickChips(),
+                        BudgetProgressCard(
+                            budget: _budget, onEdit: _editBudget),
                         const Padding(
-                          padding: EdgeInsets.all(20),
-                          child: Center(
-                              child: Text(
-                                  'No expenses yet. Tap + to add one.')),
+                          padding:
+                              EdgeInsets.fromLTRB(16, 10, 16, 2),
+                          child: Text('Recent Expenses',
+                              style: TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w800)),
                         ),
-                      ..._daySections(),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        child: OutlinedButton.icon(
-                          onPressed: _tripId == null
-                              ? null
-                              : () => context
-                                  .push(
-                                      '/expenses/settle?tripId=$_tripId')
-                                  .then((_) => _load()),
-                          icon: const Icon(
-                              Icons.account_balance_wallet_outlined),
-                          label: const Text('Open Settlement'),
+                        if (_recent.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.all(20),
+                            child: Center(
+                                child: Text(
+                                    'No expenses yet. Tap + to add one.')),
+                          ),
+                        for (final e in _recent)
+                          ExpenseCard(
+                            expense: e,
+                            onDelete: () => _delete(e),
+                            onTap: () {
+                              final id =
+                                  (e['id'] as num?)?.toInt();
+                              if (id != null) {
+                                context
+                                    .push(
+                                        '/trips/$_tripId/expenses/$id')
+                                    .then((_) => _load());
+                              }
+                            },
+                          ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          child: OutlinedButton.icon(
+                            onPressed: _tripId == null
+                                ? null
+                                : () => context
+                                    .push(
+                                        '/expenses/settle?tripId=$_tripId')
+                                    .then((_) => _load()),
+                            icon: const Icon(
+                                Icons.account_balance_wallet_outlined),
+                            label:
+                                const Text('Open Settlement'),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
       floatingActionButton: _tripId == null
@@ -313,38 +459,61 @@ class _State extends ConsumerState<ExpensesScreen> {
     );
   }
 
-  Widget _tripSelector() {
-    return Card(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      color: const Color(0xFFEFF6FF),
-      child: Padding(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        child: DropdownButtonHideUnderline(
-          child: DropdownButton<String>(
-            value: _tripId,
-            isExpanded: true,
-            icon: const Icon(Icons.expand_more_outlined),
-            items: _trips.map((t) {
-              final id =
-                  ((t['id'] as num?) ?? 0).toInt().toString();
-              final s = (t['startName'] ?? '').toString();
-              final d = (t['destName'] ?? '').toString();
-              return DropdownMenuItem(
-                value: id,
-                child: Text(
-                  s.isNotEmpty && d.isNotEmpty
-                      ? '$s → $d ${(t['tripName'] ?? '').toString().isEmpty ? '' : '(${(t['tripName'] ?? '').toString()})'}'
-                      : (t['tripName'] ?? 'Trip').toString(),
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+  Widget _photoTripCard() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: _pickTrip,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Stack(
+            children: [
+              Image.asset(
+                'assets/images/trip_hero.jpg',
+                height: 148,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
+              Container(
+                height: 148,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.05),
+                      Colors.black.withValues(alpha: 0.65),
+                    ],
+                  ),
                 ),
-              );
-            }).toList(),
-            onChanged: (v) {
-              if (v != null && v != _tripId) {
-                context.go('/trips/$v/expenses');
-              }
-            },
+              ),
+              Positioned(
+                left: 16,
+                right: 48,
+                bottom: 14,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_route,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 21,
+                            fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 2),
+                    Text(_tripMeta,
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 13)),
+                  ],
+                ),
+              ),
+              const Positioned(
+                right: 12,
+                bottom: 12,
+                child: Icon(Icons.expand_more_outlined,
+                    color: Colors.white, size: 28),
+              ),
+            ],
           ),
         ),
       ),
@@ -357,11 +526,12 @@ class _State extends ConsumerState<ExpensesScreen> {
       child: Row(
         children: [
           Expanded(
-            child: Text(_tripTitle,
+            child: Text(_route,
                 style: const TextStyle(
                     fontSize: 18, fontWeight: FontWeight.w800)),
           ),
-          Text('₹${_total.toStringAsFixed(_total.truncateToDouble() == _total ? 0 : 2)}',
+          Text(
+              '₹${_total.toStringAsFixed(_total.truncateToDouble() == _total ? 0 : 2)}',
               style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
@@ -376,44 +546,38 @@ class _State extends ConsumerState<ExpensesScreen> {
     final yourShare = ((mine?['totalOwed'] as num?) ?? 0).toDouble();
     final youPaid = ((mine?['totalPaid'] as num?) ?? 0).toDouble();
     final net = ((mine?['net'] as num?) ?? 0).toDouble();
-    return ExpenseDashboard(
+    return ExpenseDashboardScreen(
       total: _total,
       yourShare: yourShare,
       youPaid: youPaid,
       youGetBack: net > 0 ? net : 0,
+      expenseCount: _expenses.length,
     );
   }
 
-  List<Widget> _daySections() {
-    final groups = <int, List<Map<String, dynamic>>>{};
-    for (final e in _expenses) {
-      final day = ((e['dayNo'] ?? 1) as num).toInt();
-      groups.putIfAbsent(day, () => []).add(e);
-    }
-    final days = groups.keys.toList()..sort();
-    final out = <Widget>[];
-    for (final d in days) {
-      out.add(Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
-        child: Text(d == 0 ? 'Whole trip' : 'Day $d',
-            style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 15,
-                color: Color(0xFF475569))),
-      ));
-      for (final e in groups[d]!) {
-        final id = (e['id'] as num?)?.toInt();
-        out.add(ExpenseCard(
-          expense: e,
-          onDelete: () => _delete(e),
-          onTap: id == null
-              ? null
-              : () => context
-                  .push('/trips/$_tripId/expenses/$id')
-                  .then((_) => _load()),
-        ));
-      }
-    }
-    return out;
+  Widget _quickChips() {
+    return SizedBox(
+      height: 46,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        children: _chips.map((c) {
+          final selected = _chip == c;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilterChip(
+              selected: selected,
+              showCheckmark: false,
+              avatar: Text(ExpenseService.emojiFor(c),
+                  style: const TextStyle(fontSize: 15)),
+              label: Text(ExpenseService.labelFor(c)),
+              onSelected: (_) =>
+                  setState(() => _chip = selected ? null : c),
+            ),
+          );
+        }).toList(),
+      ),
+    );
   }
 }
