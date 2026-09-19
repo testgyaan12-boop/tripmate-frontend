@@ -34,3 +34,8 @@ String apiErrorMessage(Object e,
   }
   return e.toString().replaceFirst('Exception: ', '');
 }
+
+/// True when the backend refused because the user hasn't joined the trip.
+/// Screens use this to show a Join prompt instead of a dead error.
+bool isNotMemberError(Object e) =>
+    apiErrorMessage(e).contains('Not a trip member');

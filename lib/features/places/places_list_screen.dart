@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import '../auth/presentation/auth_provider.dart' show dioClientProvider;
 import '../../core/network/api_error.dart';
+import '../../shared/widgets/not_member_card.dart';
 import '../../core/data/refresh.dart';
 import 'presentation/widgets/place_gallery.dart';
 
@@ -44,6 +45,7 @@ class _State extends ConsumerState<PlacesListScreen>
   String _query = '';
   bool _loading = true;
   bool _error = false;
+  bool _notMember = false;
 
   @override
   void initState() {
@@ -84,12 +86,19 @@ class _State extends ConsumerState<PlacesListScreen>
         _loading = false;
         _error = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
-        setState(() {
-          _loading = false;
-          _error = true;
-        });
+        if (isNotMemberError(e)) {
+          setState(() {
+            _loading = false;
+            _notMember = true;
+          });
+        } else {
+          setState(() {
+            _loading = false;
+            _error = true;
+          });
+        }
       }
     }
   }
@@ -258,12 +267,16 @@ class _State extends ConsumerState<PlacesListScreen>
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: _notMember
+          ? null
+          : FloatingActionButton.extended(
         onPressed: _addPlace,
         icon: const Icon(Icons.add),
         label: const Text('Add Place'),
       ),
-      body: Column(
+      body: _notMember
+          ? NotMemberCard(tripId: widget.tripId, onRetry: _load)
+          : Column(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),

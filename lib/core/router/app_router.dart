@@ -12,6 +12,8 @@ import '../../features/places/places_list_screen.dart';
 import '../../features/places/place_detail_screen.dart';
 import '../../features/places/ai_suggest_screen.dart';
 import '../../features/members/members_screen.dart';
+import '../../features/members/member_list_screen.dart';
+import '../../features/members/invite_friend_screen.dart';
 import '../../features/expense/expenses_screen.dart';
 import '../../features/expense/add_expense_screen.dart';
 import '../../features/expense/expense_detail_screen.dart';
@@ -149,16 +151,25 @@ GoRouter buildRouter() => GoRouter(
                 StatefulShellBranch(
                   routes: [
                     GoRoute(
-                        path: 'members',
-                        builder: (_, s) => MembersScreen(
-                            tripId:
-                                s.pathParameters['tripId']!)),
+                      path: 'members',
+                      builder: (_, s) => MembersScreen(
+                          tripId:
+                              s.pathParameters['tripId']!),
+                    ),
                   ],
                 ),
               ],
             ),
           ],
         ),
+        GoRoute(
+            path: '/trips/:tripId/members/all',
+            builder: (_, s) => MemberListScreen(
+                tripId: s.pathParameters['tripId']!)),
+        GoRoute(
+            path: '/trips/:tripId/members/invite',
+            builder: (_, s) => InviteFriendScreen(
+                tripId: s.pathParameters['tripId']!)),
         GoRoute(
             path: '/trips/:tripId/chat',
             builder: (_, s) =>

@@ -6,6 +6,7 @@ import 'dart:convert';
 import '../auth/presentation/auth_provider.dart' show dioClientProvider;
 import '../places/presentation/widgets/place_gallery.dart';
 import '../../core/network/api_error.dart';
+import '../../shared/widgets/not_member_card.dart';
 import '../../core/data/refresh.dart';
 import 'ai_questions_sheet.dart';
 
@@ -47,6 +48,7 @@ class _State extends ConsumerState<ItineraryScreen> {
   Map<int, Map<String, dynamic>> _places = {};
   bool _busy = false;
   bool _loading = true;
+  bool _notMember = false;
   final int _imgSeed = 0;
 
   @override
@@ -83,8 +85,17 @@ class _State extends ConsumerState<ItineraryScreen> {
         _places = places;
         _loading = false;
       });
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
+    } catch (e) {
+      if (mounted) {
+        if (isNotMemberError(e)) {
+          setState(() {
+            _loading = false;
+            _notMember = true;
+          });
+        } else {
+          setState(() => _loading = false);
+        }
+      }
     }
   }
 
@@ -324,12 +335,16 @@ class _State extends ConsumerState<ItineraryScreen> {
           onPressed: () => context.go('/trips/${widget.tripId}/map'),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _busy ? null : _aiPlan,
-        label: Text(_busy ? 'Working…' : '✨ AI Plan'),
-        icon: const Icon(Icons.auto_awesome),
-      ),
-      body: _loading
+      floatingActionButton: _notMember
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _busy ? null : _aiPlan,
+              label: Text(_busy ? 'Working…' : '✨ AI Plan'),
+              icon: const Icon(Icons.auto_awesome),
+            ),
+      body: _notMember
+          ? NotMemberCard(tripId: widget.tripId, onRetry: _load)
+          : _loading
           ? const Center(child: CircularProgressIndicator())
           : days.isEmpty
               ? Center(

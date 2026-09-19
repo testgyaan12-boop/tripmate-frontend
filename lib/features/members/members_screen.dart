@@ -6,9 +6,12 @@ import 'package:share_plus/share_plus.dart';
 import '../auth/presentation/auth_provider.dart' show dioClientProvider;
 import '../../core/network/api_error.dart';
 import '../../core/data/refresh.dart';
+import 'widgets/people_widgets.dart';
+import 'share_link_bottom_sheet.dart';
+import '../../shared/widgets/not_member_card.dart';
 
-/// People screen: member count banner, profile cards with status,
-/// invite-link generation, self RSVP editing.
+/// Screen 1 — People dashboard: trip header, member summary,
+/// invite actions, invitation link, avatar strip.
 class MembersScreen extends ConsumerStatefulWidget {
   final String tripId;
   const MembersScreen({super.key, required this.tripId});
@@ -19,21 +22,15 @@ class MembersScreen extends ConsumerStatefulWidget {
 
 class _State extends ConsumerState<MembersScreen> {
   List<Map<String, dynamic>> _members = [];
+  Map<String, dynamic> _trip = {};
   String _invite = '';
   String _tripName = '';
   String _linkBase = '';
   int? _me;
   bool _loading = true;
   bool _error = false;
-
-  static const _avatarColors = [
-    Color(0xFF2563EB),
-    Color(0xFF8B5CF6),
-    Color(0xFFF59E0B),
-    Color(0xFF06B6D4),
-    Color(0xFFEC4899),
-    Color(0xFF10B981),
-  ];
+  bool _notMember = false;
+  bool _retried = false;
 
   @override
   void initState() {
@@ -63,18 +60,26 @@ class _State extends ConsumerState<MembersScreen> {
         _members = ((res[0].data['data'] as List))
             .map((e) => Map<String, dynamic>.from(e))
             .toList();
+        _trip = trip;
         _invite = (trip['inviteCode'] ?? '').toString();
         _tripName = (trip['tripName'] ?? 'TripMate trip').toString();
         _linkBase = (pub['app.invite.base-url'] ?? '').toString();
         _me = (res[3].data['data']['id'] as num?)?.toInt();
         _loading = false;
         _error = false;
+        _notMember = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
+        if (isNotMemberError(e) && !_retried) {
+          _retried = true;
+          await Future.delayed(const Duration(milliseconds: 800));
+          if (mounted) { _load(); return; }
+        }
         setState(() {
           _loading = false;
-          _error = true;
+          _error = !isNotMemberError(e);
+          _notMember = isNotMemberError(e);
         });
       }
     }
@@ -82,6 +87,9 @@ class _State extends ConsumerState<MembersScreen> {
 
   String get _inviteLink =>
       _linkBase.isNotEmpty ? '$_linkBase$_invite' : 'Code: $_invite';
+
+  bool get _isOwner => _members.any((m) =>
+      PeopleTheme.memberId(m) == _me && m['role'] == 'OWNER');
 
   Future<void> _share() async {
     await Share.share(
@@ -181,6 +189,11 @@ class _State extends ConsumerState<MembersScreen> {
     }
   }
 
+  void _openShareSheet() {
+    showShareLinkSheet(context,
+        link: _inviteLink, tripName: _tripName);
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen(dataVersionProvider, (_, _) => _load());
@@ -188,361 +201,176 @@ class _State extends ConsumerState<MembersScreen> {
       if (req != null && req.tab == 3) _load();
     });
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: PeopleTheme.bg,
       appBar: AppBar(
         title: const Text('People'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/trips/${widget.tripId}/map'),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.share_outlined),
+            onPressed: _share,
+            tooltip: 'Share trip',
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _error
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('Could not load members'),
-                      TextButton(
-                        onPressed: _load,
-                        child: const Text('Retry'),
+          : _notMember
+              ? NotMemberCard(
+                  tripId: widget.tripId, onRetry: _load)
+              : _error
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('Could not load members'),
+                          TextButton(
+                            onPressed: _load,
+                            child: const Text('Retry'),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                )
-              : RefreshIndicator(
-              onRefresh: _load,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 110),
-                children: [
-                  _CountBanner(count: _members.length),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 54,
-                    child: FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                    )
+                  : RefreshIndicator(
+                  onRefresh: _load,
+                  child: SingleChildScrollView(
+                    padding:
+                        const EdgeInsets.fromLTRB(16, 8, 16, 110),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TripHeaderCard(
+                            trip: _trip,
+                            memberCount: _members.length),
+                        const SizedBox(height: 12),
+                        _summaryCard(),
+                        const SizedBox(height: 12),
+                        ShareButton(
+                          label: '+ Invite Friends',
+                          icon: Icons.person_add_alt,
+                          onTap: () => context.push(
+                              '/trips/${widget.tripId}/members/invite'),
                         ),
-                        textStyle: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
+                        const SizedBox(height: 10),
+                        ShareButton(
+                          label: '🔗 Share Trip Link',
+                          icon: Icons.link_outlined,
+                          primary: false,
+                          onTap: _openShareSheet,
                         ),
-                      ),
-                      onPressed: _share,
-                      icon: const Icon(Icons.person_add_alt),
-                      label: const Text('Invite Friends'),
+                        const SizedBox(height: 12),
+                        InviteCard(
+                          link: _inviteLink,
+                          onCopy: _copy,
+                          onShare: _share,
+                          showRefresh: _isOwner,
+                          onRefresh: _refreshInvite,
+                        ),
+                        const SizedBox(height: 18),
+                        Row(
+                          children: [
+                            Text(
+                              'Trip Members (${_members.length})',
+                              style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w800),
+                            ),
+                            const Spacer(),
+                            TextButton(
+                              onPressed: () => context.push(
+                                  '/trips/${widget.tripId}/members/all'),
+                              child: const Text('View All Members'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        MemberAvatarList(
+                          members: _members,
+                          me: _me,
+                          onTap: (_) => context.push(
+                              '/trips/${widget.tripId}/members/all'),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  _InviteCard(
-                      link: _inviteLink,
-                      onCopy: _copy,
-                      showRefresh: _members.any((m) =>
-                          (m['userId'] as num?)?.toInt() == _me &&
-                          m['role'] == 'OWNER'),
-                      onRefresh: _refreshInvite),
-                  const SizedBox(height: 18),
-                  ..._members.map((m) {
-                    final uid = (m['userId'] as num?)?.toInt() ?? 0;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _MemberCard(
-                        member: m,
-                        isMe: uid == _me,
-                        color: _avatarColors[
-                            uid % _avatarColors.length],
-                        onTap: uid == _me ? _rsvpSheet : null,
-                      ),
-                    );
-                  }),
-                ],
-              ),
-            ),
+                ),
     );
   }
-}
 
-class _CountBanner extends StatelessWidget {
-  final int count;
-  const _CountBanner({required this.count});
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _summaryCard() {
+    final n = _members.length;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(22),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF2563EB), Color(0xFF10B981)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF2563EB).withValues(alpha: 0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
       child: Row(
         children: [
           Container(
-            width: 52,
-            height: 52,
+            width: 56,
+            height: 56,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(16),
+              color: const Color(0xFFEFF6FF),
+              borderRadius: BorderRadius.circular(18),
             ),
-            child: const Icon(Icons.group,
-                color: Colors.white, size: 28),
+            child: const Center(
+              child: Text('👥',
+                  style: TextStyle(fontSize: 28)),
+            ),
           ),
           const SizedBox(width: 14),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '$count Member${count == 1 ? '' : 's'} joined',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const Text(
-                'Planning this trip together',
-                style: TextStyle(
-                    color: Color(0xE6FFFFFF), fontSize: 13),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InviteCard extends StatelessWidget {
-  final String link;
-  final VoidCallback onCopy;
-  final bool showRefresh;
-  final VoidCallback onRefresh;
-  const _InviteCard({
-    required this.link,
-    required this.onCopy,
-    required this.showRefresh,
-    required this.onRefresh,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Trip invitation link',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF64748B),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Row(
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      link,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                Text(
+                  '$n Member${n == 1 ? '' : 's'} Joined',
+                  style: const TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(width: 8),
-                IconButton.filledTonal(
-                  onPressed: onCopy,
-                  icon: const Icon(Icons.copy, size: 18),
-                  tooltip: 'Copy link',
+                const Text(
+                  'Planning this trip together',
+                  style: TextStyle(
+                      color: PeopleTheme.sub, fontSize: 13),
                 ),
-                if (showRefresh) ...[
-                  const SizedBox(width: 8),
-                  IconButton.filledTonal(
-                    onPressed: onRefresh,
-                    icon: const Icon(Icons.refresh, size: 18),
-                    tooltip: 'New link (old one stops working)',
-                  ),
-                ],
               ],
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MemberCard extends StatelessWidget {
-  final Map<String, dynamic> member;
-  final bool isMe;
-  final Color color;
-  final VoidCallback? onTap;
-  const _MemberCard({
-    required this.member,
-    required this.isMe,
-    required this.color,
-    required this.onTap,
-  });
-
-  Color _statusColor(String rsvp) {
-    switch (rsvp) {
-      case 'GOING':
-        return const Color(0xFF10B981);
-      case 'MAYBE':
-        return const Color(0xFFF59E0B);
-      default:
-        return const Color(0xFFF43F5E);
-    }
-  }
-
-  String _statusLabel(String rsvp) {
-    switch (rsvp) {
-      case 'GOING':
-        return 'Going';
-      case 'MAYBE':
-        return 'Maybe';
-      default:
-        return 'Not Going';
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final name =
-        (member['name']?.toString() ?? '').isNotEmpty
-            ? member['name'].toString()
-            : 'Traveller ${member['userId']}';
-    final img = member['profileImage'] as String?;
-    final isOwner = member['role'] == 'OWNER';
-    final rsvp = (member['rsvp'] ?? 'GOING').toString();
-    return Card(
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: color,
-                backgroundImage:
-                    img != null ? NetworkImage(img) : null,
-                onBackgroundImageError:
-                    img != null ? (_, _) {} : null,
-                child: img == null
-                    ? Text(
-                        name.isNotEmpty ? name[0].toUpperCase() : '?',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 19,
-                        ),
-                      )
-                    : null,
-            ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        if (isMe)
-                          Container(
-                            margin: const EdgeInsets.only(left: 6),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 7, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFEFF6FF),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Text(
-                              'You',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF2563EB),
-                              ),
-                            ),
-                          ),
-                        if (isOwner) ...[
-                          const SizedBox(width: 4),
-                          const Icon(Icons.workspace_premium,
-                              size: 15, color: Color(0xFFF59E0B)),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      isOwner ? 'Trip Owner' : 'Member',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: _statusColor(rsvp).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  _statusLabel(rsvp),
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: _statusColor(rsvp),
-                  ),
-                ),
-              ),
-            ],
           ),
-        ),
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: _rsvpSheet,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF10B981)
+                    .withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'My Status',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF10B981),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

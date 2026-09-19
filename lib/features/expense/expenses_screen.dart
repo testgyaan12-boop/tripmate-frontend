@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../auth/presentation/auth_provider.dart' show dioClientProvider;
 import '../../core/network/api_error.dart';
+import '../../shared/widgets/not_member_card.dart';
 import 'expense_service.dart';
 import 'expense_dashboard.dart';
 import 'category_chart.dart';
@@ -22,6 +23,8 @@ class ExpensesScreen extends ConsumerStatefulWidget {
 class _State extends ConsumerState<ExpensesScreen> {
   String? _tripId;
   String? _chip;
+  bool _notMember = false;
+  bool _retried = false;
   List<Map<String, dynamic>> _trips = [];
   List<Map<String, dynamic>> _expenses = [];
   Map<String, dynamic> _settle = {};
@@ -74,23 +77,47 @@ class _State extends ConsumerState<ExpensesScreen> {
       final tid = valid
           ? _tripId!
           : ((trips.first['id'] as num?) ?? 0).toInt().toString();
-      final res = await Future.wait([
-        svc.list(tid),
-        svc.settlements(tid),
-        svc.budget(tid),
-        dio.get('/api/users/me'),
-      ]);
       if (!mounted) return;
       setState(() {
         _trips = trips;
         _tripId = tid;
-        _expenses = res[0] as List<Map<String, dynamic>>;
-        _settle = res[1] as Map<String, dynamic>;
-        _budget = res[2] as Map<String, dynamic>;
-        _me = (((res[3] as dynamic).data['data']['id'] as num?) ?? 0)
-            .toInt();
-        _loading = false;
       });
+      try {
+        final res = await Future.wait([
+          svc.list(tid),
+          svc.settlements(tid),
+          svc.budget(tid),
+          dio.get('/api/users/me'),
+        ]);
+        if (!mounted) return;
+        setState(() {
+          _expenses = res[0] as List<Map<String, dynamic>>;
+          _settle = res[1] as Map<String, dynamic>;
+          _budget = res[2] as Map<String, dynamic>;
+          _me = (((res[3] as dynamic).data['data']['id'] as num?) ?? 0)
+              .toInt();
+          _loading = false;
+          _notMember = false;
+        });
+      } catch (e) {
+        if (!mounted) return;
+        if (isNotMemberError(e) && !_retried) {
+          _retried = true;
+          await Future.delayed(const Duration(milliseconds: 800));
+          if (mounted) { _load(); return; }
+        }
+        if (isNotMemberError(e)) {
+          setState(() {
+            _loading = false;
+            _notMember = true;
+          });
+        } else {
+          if (!mounted) return;
+          setState(() => _loading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(apiErrorMessage(e))));
+        }
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -383,7 +410,22 @@ class _State extends ConsumerState<ExpensesScreen> {
                     ],
                   ),
                 )
-              : RefreshIndicator(
+              : _notMember
+                  ? SingleChildScrollView(
+                      padding:
+                          const EdgeInsets.only(bottom: 90),
+                      child: Column(
+                        crossAxisAlignment:
+                            CrossAxisAlignment.stretch,
+                        children: [
+                          _photoTripCard(),
+                          NotMemberCard(
+                              tripId: _tripId ?? '',
+                              onRetry: _load),
+                        ],
+                      ),
+                    )
+                  : RefreshIndicator(
                   onRefresh: _load,
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.only(bottom: 90),
@@ -447,7 +489,7 @@ class _State extends ConsumerState<ExpensesScreen> {
                     ),
                   ),
                 ),
-      floatingActionButton: _tripId == null
+      floatingActionButton: (_tripId == null || _notMember)
           ? null
           : FloatingActionButton.extended(
               onPressed: () => context
