@@ -5,7 +5,9 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import '../auth/presentation/auth_provider.dart' show dioClientProvider;
 import '../../core/network/api_error.dart';
+import '../../core/constants/app_colors.dart';
 import '../../shared/widgets/not_member_card.dart';
+import '../../shared/widgets/top_bar.dart' show DarkModeToggle, NotificationsButton;
 import '../../core/data/refresh.dart';
 import 'presentation/widgets/place_gallery.dart';
 
@@ -241,7 +243,7 @@ class _State extends ConsumerState<PlacesListScreen>
     });
     final items = _filtered;
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppColors.scaffold(context),
       appBar: AppBar(
         title: const Text('Places'),
         leading: IconButton(
@@ -254,6 +256,8 @@ class _State extends ConsumerState<PlacesListScreen>
             tooltip: 'AI suggestions',
             onPressed: _suggest,
           ),
+          const DarkModeToggle(),
+          const NotificationsButton(),
         ],
         bottom: TabBar(
           controller: _tabs,
@@ -292,7 +296,7 @@ class _State extends ConsumerState<PlacesListScreen>
                         onPressed: () => _search.clear(),
                       ),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: AppColors.inputFill(context),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
                   borderSide: BorderSide.none,
@@ -305,7 +309,7 @@ class _State extends ConsumerState<PlacesListScreen>
                 ? const Center(child: CircularProgressIndicator())
                 : items.isEmpty
                     ? Center(
-                        child: _error && _query.isEmpty
+                          child: _error && _query.isEmpty
                             ? Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -391,7 +395,7 @@ class _PlaceCard extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: AppColors.card(context),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -460,10 +464,10 @@ class _PlaceCard extends StatelessWidget {
               children: [
                 Text(
                   (p['name'] ?? '').toString(),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
+                    color: AppColors.textPrimary(context),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -549,15 +553,15 @@ class _VotePill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
+        color: AppColors.inputFill(context),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w600,
-          color: Color(0xFF334155),
+          color: AppColors.textPrimary(context),
         ),
       ),
     );
@@ -659,7 +663,7 @@ class _AddPlaceSheetState extends ConsumerState<_AddPlaceSheet> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE2E8F0),
+                    color: AppColors.cardBorder(context),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -675,7 +679,7 @@ class _AddPlaceSheetState extends ConsumerState<_AddPlaceSheet> {
                 decoration: InputDecoration(
                   hintText: 'Place name (e.g. Jog Falls)',
                   filled: true,
-                  fillColor: const Color(0xFFF1F5F9),
+                  fillColor: AppColors.inputFill(context),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
                     borderSide: BorderSide.none,
@@ -691,7 +695,7 @@ class _AddPlaceSheetState extends ConsumerState<_AddPlaceSheet> {
                 decoration: InputDecoration(
                   hintText: 'Location (e.g. Karnataka)',
                   filled: true,
-                  fillColor: const Color(0xFFF1F5F9),
+                  fillColor: AppColors.inputFill(context),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
                     borderSide: BorderSide.none,
@@ -703,7 +707,7 @@ class _AddPlaceSheetState extends ConsumerState<_AddPlaceSheet> {
                 initialValue: _category,
                 decoration: InputDecoration(
                   filled: true,
-                  fillColor: const Color(0xFFF1F5F9),
+                  fillColor: AppColors.inputFill(context),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
                     borderSide: BorderSide.none,

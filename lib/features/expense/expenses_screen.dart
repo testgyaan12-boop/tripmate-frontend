@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../auth/presentation/auth_provider.dart' show dioClientProvider;
 import '../../core/network/api_error.dart';
+import '../../core/constants/app_colors.dart';
 import '../../shared/widgets/not_member_card.dart';
+import '../../shared/widgets/top_bar.dart' show DarkModeToggle, NotificationsButton;
 import 'expense_service.dart';
 import 'expense_dashboard.dart';
 import 'category_chart.dart';
@@ -374,7 +376,7 @@ class _State extends ConsumerState<ExpensesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppColors.scaffold(context),
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_outlined),
@@ -387,11 +389,10 @@ class _State extends ConsumerState<ExpensesScreen> {
           },
         ),
         title: const Text('Expenses'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            onPressed: () => context.push('/notifications'),
-          ),
+        actions: const [
+          DarkModeToggle(),
+          NotificationsButton(),
+          SizedBox(width: 8),
         ],
       ),
       body: _loading

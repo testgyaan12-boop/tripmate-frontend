@@ -4,22 +4,14 @@ import 'package:go_router/go_router.dart';
 import '../../core/data/refresh.dart';
 
 /// Trip bottom nav: Home | Places | Expenses | Itinerary | People.
-/// Floating pill with icon + label, active pill highlight.
-/// Shared by Home + all trip tabs.
+/// White pill with blue accent, dark-mode aware.
 class TripNavBar extends ConsumerWidget {
-  /// Null when no trip exists yet (tabs beyond Home show a hint).
   final String? tripId;
-
-  /// 0 Home, 1 Places, 2 Expenses, 3 Itinerary, 4 People.
   final int currentIndex;
-
   const TripNavBar(
       {super.key, required this.tripId, required this.currentIndex});
 
   void _go(BuildContext context, WidgetRef ref, int i) {
-    // Every tap (even re-taps) announces itself; screens reload only when
-    // their data is stale or a write happened since. Event handler, so
-    // provider writes are safe here.
     ref.read(tabRefreshRequestProvider.notifier).state =
         TabRefresh(i, DateTime.now().millisecondsSinceEpoch);
     if (i == currentIndex) return;
@@ -46,19 +38,22 @@ class TripNavBar extends ConsumerWidget {
       (Icons.timeline_outlined, Icons.timeline, 'Itinerary'),
       (Icons.group_outlined, Icons.group, 'People'),
     ];
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return SafeArea(
       top: false,
       child: Container(
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
           borderRadius: BorderRadius.circular(28),
-          boxShadow: const [
+          boxShadow: [
             BoxShadow(
-              color: Color(0x22000000),
+              color: isDark
+                  ? Colors.black.withValues(alpha: 0.4)
+                  : const Color(0x22000000),
               blurRadius: 20,
-              offset: Offset(0, 8),
+              offset: const Offset(0, 8),
             ),
           ],
         ),
@@ -70,6 +65,7 @@ class TripNavBar extends ConsumerWidget {
                 active: currentIndex == i,
                 icon: currentIndex == i ? items[i].$2 : items[i].$1,
                 label: items[i].$3,
+                isDark: isDark,
                 onTap: () => _go(context, ref, i),
               ),
           ],
@@ -83,27 +79,32 @@ class _NavTab extends StatelessWidget {
   final bool active;
   final IconData icon;
   final String label;
+  final bool isDark;
   final VoidCallback onTap;
   const _NavTab({
     required this.active,
     required this.icon,
     required this.label,
+    required this.isDark,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final activeColor = const Color(0xFF2563EB);
+    final inactiveColor = isDark ? const Color(0xFF94A3B8) : const Color(0xFF94A3B8);
+    final bgColor = active
+        ? activeColor.withValues(alpha: 0.12)
+        : Colors.transparent;
+
     return InkWell(
       borderRadius: BorderRadius.circular(20),
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: active
-              ? const Color(0xFF2563EB).withValues(alpha: 0.12)
-              : Colors.transparent,
+          color: bgColor,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Column(
@@ -112,20 +113,15 @@ class _NavTab extends StatelessWidget {
             Icon(
               icon,
               size: 22,
-              color: active
-                  ? const Color(0xFF2563EB)
-                  : const Color(0xFF94A3B8),
+              color: active ? activeColor : inactiveColor,
             ),
             const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(
                 fontSize: 11,
-                fontWeight:
-                    active ? FontWeight.w700 : FontWeight.w500,
-                color: active
-                    ? const Color(0xFF2563EB)
-                    : const Color(0xFF94A3B8),
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                color: active ? activeColor : inactiveColor,
               ),
             ),
           ],

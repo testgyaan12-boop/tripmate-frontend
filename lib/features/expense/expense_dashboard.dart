@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/constants/app_colors.dart';
 
 /// Spec ExpenseDashboardScreen: four horizontal summary cards with
 /// icon, amount and small status text.
@@ -27,13 +28,14 @@ class ExpenseDashboardScreen extends StatelessWidget {
         padding:
             const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         children: [
-          _card('Total Expense', total, const Color(0xFF2563EB),
+          _card(context, 'Total Expense', total, const Color(0xFF2563EB),
               Icons.wallet_outlined, '$expenseCount expenses'),
-          _card('Your Share', yourShare, const Color(0xFFF59E0B),
+          _card(context, 'Your Share', yourShare, const Color(0xFFF59E0B),
               Icons.pie_chart_outline, 'your portion'),
-          _card('You Paid', youPaid, const Color(0xFF8B5CF6),
+          _card(context, 'You Paid', youPaid, const Color(0xFF8B5CF6),
               Icons.arrow_upward_outlined, 'paid by you'),
           _card(
+              context,
               'You Get Back',
               youGetBack,
               const Color(0xFF10B981),
@@ -44,14 +46,14 @@ class ExpenseDashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _card(String label, double value, Color color, IconData icon,
+  Widget _card(BuildContext context, String label, double value, Color color, IconData icon,
       String status) {
     return Container(
       width: 148,
       margin: const EdgeInsets.only(right: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.card(context),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: color.withValues(alpha: 0.25)),
         boxShadow: [

@@ -5,6 +5,8 @@ import 'dashboard_providers.dart';
 import '../../core/data/refresh.dart';
 import '../../core/network/api_error.dart';
 import '../../shared/widgets/trip_nav_bar.dart';
+import '../../shared/widgets/top_bar.dart';
+import '../../core/constants/app_colors.dart';
 import '../auth/presentation/auth_provider.dart' show dioClientProvider;
 
 const _cardImages = [
@@ -33,7 +35,7 @@ class DashboardScreen extends ConsumerWidget {
     });
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () async {
@@ -121,20 +123,20 @@ class _Body extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 110),
       children: [
-        _TopBar(user: data.user, unread: unread),
+        TripMateHomeTopBar(user: data.user),
         const SizedBox(height: 16),
         Text(
           'Hello, $name 👋',
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.w800,
             letterSpacing: -0.3,
-            color: Color(0xFF0F172A),
+            color: AppColors.textPrimary(context),
           ),
         ),
-        const Text(
+        Text(
           'Where to next?',
-          style: TextStyle(fontSize: 15, color: Color(0xFF64748B)),
+          style: TextStyle(fontSize: 15, color: AppColors.textSecondary(context)),
         ),
         const SizedBox(height: 18),
         if (trips.isEmpty)
@@ -145,12 +147,12 @@ class _Body extends ConsumerWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
+              Text(
                 'My Trips',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF0F172A),
+                  color: AppColors.textPrimary(context),
                 ),
               ),
               TextButton.icon(
@@ -176,79 +178,6 @@ class _Body extends ConsumerWidget {
                 ),
               ),
         ],
-      ],
-    );
-  }
-}
-
-class _TopBar extends StatelessWidget {
-  final Map<String, dynamic> user;
-  final int unread;
-  const _TopBar({required this.user, required this.unread});
-
-  @override
-  Widget build(BuildContext context) {
-    final name = (user['name'] ?? '?').toString();
-    final img = user['profileImage'] as String?;
-    return Row(
-      children: [
-        GestureDetector(
-          onTap: () => context.go('/profile'),
-          child: CircleAvatar(
-            radius: 22,
-            backgroundColor: const Color(0xFF2563EB),
-            backgroundImage: img != null ? NetworkImage(img) : null,
-            child: img == null
-                ? Text(
-                    name.isNotEmpty ? name[0].toUpperCase() : '?',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 18,
-                    ),
-                  )
-                : null,
-          ),
-        ),
-        const Spacer(),
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            IconButton(
-              style: IconButton.styleFrom(
-                backgroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              onPressed: () => context.go('/notifications'),
-              icon: const Icon(
-                Icons.notifications_outlined,
-                color: Color(0xFF0F172A),
-              ),
-            ),
-            if (unread > 0)
-              Positioned(
-                right: 6,
-                top: 6,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFEF4444),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Text(
-                    '$unread',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
       ],
     );
   }
@@ -394,7 +323,7 @@ class _TripCard extends StatelessWidget {
                   errorBuilder: (_, _, _) => Container(
                     width: 86,
                     height: 86,
-                    color: const Color(0xFFE2E8F0),
+                    color: AppColors.cardBorder(context),
                     child: const Icon(Icons.image),
                   ),
                 ),
@@ -409,10 +338,10 @@ class _TripCard extends StatelessWidget {
                         Expanded(
                           child: Text(
                             trip.name,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF0F172A),
+                              color: AppColors.textPrimary(context),
                             ),
                           ),
                         ),
@@ -422,9 +351,9 @@ class _TripCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       trip.route,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF64748B),
+                        color: AppColors.textSecondary(context),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -440,7 +369,7 @@ class _TripCard extends StatelessWidget {
                               value: v,
                               minHeight: 6,
                               borderRadius: BorderRadius.circular(4),
-                              backgroundColor: const Color(0xFFE2E8F0),
+                              backgroundColor: AppColors.cardBorder(context),
                               valueColor:
                                   const AlwaysStoppedAnimation(
                                 Color(0xFF10B981),
@@ -490,7 +419,7 @@ class _EmptyState extends StatelessWidget {
               width: 72,
               height: 72,
               decoration: BoxDecoration(
-                color: const Color(0xFFEFF6FF),
+                    color: AppColors.card(context),
                 borderRadius: BorderRadius.circular(22),
               ),
               child: const Icon(
@@ -504,9 +433,9 @@ class _EmptyState extends StatelessWidget {
               'No trips yet',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
             ),
-            const Text(
+            Text(
               'Create your first road trip and invite friends.',
-              style: TextStyle(color: Color(0xFF64748B)),
+              style: TextStyle(color: AppColors.textSecondary(context)),
             ),
             const SizedBox(height: 16),
             FilledButton.icon(

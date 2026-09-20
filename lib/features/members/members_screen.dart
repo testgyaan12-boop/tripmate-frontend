@@ -8,6 +8,8 @@ import '../../core/network/api_error.dart';
 import '../../core/data/refresh.dart';
 import 'widgets/people_widgets.dart';
 import 'share_link_bottom_sheet.dart';
+import '../../shared/widgets/top_bar.dart' show DarkModeToggle, NotificationsButton;
+import '../../core/constants/app_colors.dart';
 import '../../shared/widgets/not_member_card.dart';
 
 /// Screen 1 — People dashboard: trip header, member summary,
@@ -201,19 +203,17 @@ class _State extends ConsumerState<MembersScreen> {
       if (req != null && req.tab == 3) _load();
     });
     return Scaffold(
-      backgroundColor: PeopleTheme.bg,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('People'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/trips/${widget.tripId}/map'),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.share_outlined),
-            onPressed: _share,
-            tooltip: 'Share trip',
-          ),
+        actions: const [
+          DarkModeToggle(),
+          NotificationsButton(),
+          SizedBox(width: 8),
         ],
       ),
       body: _loading
@@ -293,6 +293,18 @@ class _State extends ConsumerState<MembersScreen> {
                           onTap: (_) => context.push(
                               '/trips/${widget.tripId}/members/all'),
                         ),
+                        const SizedBox(height: 18),
+                        // ── Trip History ──
+                        ShareButton(
+                          label: '📜 Trip History',
+                          icon: Icons.history,
+                          primary: false,
+                          onTap: () => context.push(
+                              '/trips/${widget.tripId}/history'),
+                        ),
+                        const SizedBox(height: 18),
+                        // ── Join by Code ──
+                        _JoinByCode(tripId: widget.tripId),
                       ],
                     ),
                   ),
@@ -305,7 +317,7 @@ class _State extends ConsumerState<MembersScreen> {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.card(context),
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
@@ -321,7 +333,7 @@ class _State extends ConsumerState<MembersScreen> {
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color: const Color(0xFFEFF6FF),
+              color: AppColors.card(context),
               borderRadius: BorderRadius.circular(18),
             ),
             child: const Center(
@@ -369,6 +381,120 @@ class _State extends ConsumerState<MembersScreen> {
                 ),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _JoinByCode extends StatefulWidget {
+  final String tripId;
+  const _JoinByCode({required this.tripId});
+
+  @override
+  State<_JoinByCode> createState() => _State2();
+}
+
+class _State2 extends State<_JoinByCode> {
+  final _ctrl = TextEditingController();
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _join() async {
+    final code = _ctrl.text.trim();
+    if (code.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter an invite code')),
+      );
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final dio = ProviderScope.containerOf(context)
+          .read(dioClientProvider)
+          .dio;
+      // Try joining by code (public trip lookup)
+      final tripRes = await dio.get('/api/trips/by-code/$code');
+      final tripId = (tripRes.data['data']['tripId']).toString();
+      await dio.post('/api/trips/$tripId/join',
+          data: {'inviteCode': code});
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Joined trip successfully!'),
+            backgroundColor: Color(0xFF10B981)),
+      );
+      _ctrl.clear();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(apiErrorMessage(e))),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.card(context),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.cardBorder(context)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Join Another Trip',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          Text(
+            'Enter an invite code to join a different trip.',
+            style: TextStyle(color: AppColors.textSecondary(context), fontSize: 12),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _ctrl,
+                  decoration: InputDecoration(
+                    hintText: 'Invite code',
+                    isDense: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 44,
+                child: FilledButton(
+                  onPressed: _busy ? null : _join,
+                  style: FilledButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: _busy
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                      : const Text('Join'),
+                ),
+              ),
+            ],
           ),
         ],
       ),

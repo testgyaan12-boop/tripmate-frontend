@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/dark_mode_provider.dart';
 import 'features/auth/presentation/auth_provider.dart' show dioClientProvider;
 
 class TripMateApp extends StatelessWidget {
@@ -19,7 +20,7 @@ class _App extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(appRouterProvider);
-    // Dead sessions bounce back to login automatically.
+    final dark = ref.watch(darkModeProvider).dark;
     ref.read(dioClientProvider).onAuthLost = () {
       if (router.state.uri.toString() != '/login') {
         router.go('/login');
@@ -28,6 +29,8 @@ class _App extends ConsumerWidget {
     return MaterialApp.router(
       title: 'TripMate',
       theme: buildAppTheme(),
+      darkTheme: buildDarkTheme(),
+      themeMode: dark ? ThemeMode.dark : ThemeMode.light,
       routerConfig: router,
     );
   }

@@ -14,6 +14,7 @@ import '../../features/places/ai_suggest_screen.dart';
 import '../../features/members/members_screen.dart';
 import '../../features/members/member_list_screen.dart';
 import '../../features/members/invite_friend_screen.dart';
+import '../../features/members/trip_history_screen.dart';
 import '../../features/expense/expenses_screen.dart';
 import '../../features/expense/add_expense_screen.dart';
 import '../../features/expense/expense_detail_screen.dart';
@@ -160,6 +161,10 @@ GoRouter buildRouter() => GoRouter(
                 ),
               ],
             ),
+            GoRoute(
+                path: 'history',
+                builder: (_, s) => TripHistoryScreen(
+                    tripId: s.pathParameters['tripId']!)),
           ],
         ),
         GoRoute(

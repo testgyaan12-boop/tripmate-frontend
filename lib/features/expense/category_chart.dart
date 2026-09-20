@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/constants/app_colors.dart';
 import 'dart:math' as math;
 import 'expense_service.dart';
 
@@ -58,9 +59,9 @@ class ExpenseCategoryChart extends StatelessWidget {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text('Total',
+                          Text('Total',
                               style: TextStyle(
-                                  fontSize: 11, color: Color(0xFF64748B))),
+                                  fontSize: 11, color: AppColors.textSecondary(context))),
                           Text('₹${total.toStringAsFixed(0)}',
                               style: const TextStyle(
                                   fontWeight: FontWeight.w800, fontSize: 15)),

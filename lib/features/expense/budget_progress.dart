@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/constants/app_colors.dart';
 import 'expense_service.dart';
 
 /// Spec BudgetProgressCard: estimated total, overall progress
@@ -42,9 +43,9 @@ class BudgetProgressCard extends StatelessWidget {
               ],
             ),
             if (totalPlanned <= 0)
-              const Text(
+              Text(
                   'Plan your trip spending: Fuel, Stay, Food, Activities…',
-                  style: TextStyle(color: Color(0xFF64748B))),
+                  style: TextStyle(color: AppColors.textSecondary(context))),
             if (totalPlanned > 0) ...[
               const SizedBox(height: 4),
               ClipRRect(
@@ -93,9 +94,9 @@ class BudgetProgressCard extends StatelessWidget {
                                         const TextStyle(fontSize: 13)),
                                 Text(
                                   '₹${((it['spent'] as num?) ?? 0).toStringAsFixed(0)} / ₹${((it['planned'] as num?) ?? 0).toStringAsFixed(0)}',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                       fontSize: 12,
-                                      color: Color(0xFF64748B)),
+                                      color: AppColors.textSecondary(context)),
                                 ),
                               ],
                             ),

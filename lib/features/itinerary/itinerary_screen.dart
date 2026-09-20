@@ -6,7 +6,9 @@ import 'dart:convert';
 import '../auth/presentation/auth_provider.dart' show dioClientProvider;
 import '../places/presentation/widgets/place_gallery.dart';
 import '../../core/network/api_error.dart';
+import '../../core/constants/app_colors.dart';
 import '../../shared/widgets/not_member_card.dart';
+import '../../shared/widgets/top_bar.dart' show DarkModeToggle, NotificationsButton;
 import '../../core/data/refresh.dart';
 import 'ai_questions_sheet.dart';
 
@@ -327,13 +329,18 @@ class _State extends ConsumerState<ItineraryScreen> {
     final skeleton =
         _items.isNotEmpty && _items.every((e) => e['placeId'] == null);
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppColors.scaffold(context),
       appBar: AppBar(
         title: Text(_routeTitle),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/trips/${widget.tripId}/map'),
         ),
+        actions: const [
+          DarkModeToggle(),
+          NotificationsButton(),
+          SizedBox(width: 8),
+        ],
       ),
       floatingActionButton: _notMember
           ? null
@@ -357,7 +364,7 @@ class _State extends ConsumerState<ItineraryScreen> {
                           width: 72,
                           height: 72,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFEFF6FF),
+                            color: AppColors.card(context),
                             borderRadius: BorderRadius.circular(22),
                           ),
                           child: const Icon(
@@ -468,7 +475,7 @@ class _SkeletonBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       margin: EdgeInsets.zero,
-      color: const Color(0xFFEFF6FF),
+      color: AppColors.card(context),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -549,7 +556,7 @@ class _DaySuggestSheetState extends State<_DaySuggestSheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE2E8F0),
+                  color: AppColors.cardBorder(context),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -613,7 +620,7 @@ class _DaySuggestSheetState extends State<_DaySuggestSheet> {
       decoration: InputDecoration(
         hintText: hint,
         filled: true,
-        fillColor: const Color(0xFFF1F5F9),
+        fillColor: AppColors.inputFill(context),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
@@ -769,10 +776,10 @@ class _LegCard extends StatelessWidget {
               children: [
                 Text(
                   (item['title'] ?? '').toString(),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
+                    color: AppColors.textPrimary(context),
                   ),
                 ),
                 if ((place?['address']?.toString() ?? '').isNotEmpty)
@@ -869,7 +876,7 @@ class _DayInfoSheet extends StatelessWidget {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: const Color(0xFFE2E8F0),
+                color: AppColors.cardBorder(context),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -950,10 +957,10 @@ class _DayInfoSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'Tip: vote 👍 on these places to choose tonight\'s stay',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+            style: TextStyle(fontSize: 11, color: AppColors.textMuted(context)),
           ),
         ],
       ),
@@ -989,7 +996,7 @@ class _Chip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFFEFF6FF),
+        color: AppColors.card(context),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -1034,10 +1041,10 @@ class _NoteRow extends StatelessWidget {
           width: 44,
           child: Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF475569),
+              color: AppColors.textPrimary(context),
             ),
           ),
         ),
@@ -1047,8 +1054,8 @@ class _NoteRow extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               color: dim
-                  ? const Color(0xFF94A3B8)
-                  : const Color(0xFF334155),
+                  ? AppColors.textMuted(context)
+                  : AppColors.textPrimary(context),
               fontStyle: dim ? FontStyle.italic : FontStyle.normal,
             ),
           ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/constants/app_colors.dart';
 import 'expense_service.dart';
 
 /// Spec expense card: title, Added by, Amount, Date, Split N People,
@@ -73,8 +74,8 @@ class ExpenseCard extends StatelessWidget {
               children: [
                 Text(
                     'Split: ${splits.length} ${splits.length == 1 ? 'Person' : 'People'}',
-                    style: const TextStyle(
-                        fontSize: 12, color: Color(0xFF475569))),
+                    style: TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary(context))),
                 const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(
