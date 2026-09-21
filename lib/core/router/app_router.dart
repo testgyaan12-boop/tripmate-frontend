@@ -85,6 +85,10 @@ GoRouter buildRouter() => GoRouter(
         GoRoute(
             path: '/trips/new',
             builder: (_, _) => const CreateTripScreen()),
+        GoRoute(
+            path: '/trips/:tripId/edit',
+            builder: (_, s) => CreateTripScreen(
+                editTripId: s.pathParameters['tripId']!)),
         // Trip tabs share one IndexedStack shell nested under the
         // parameterized parent (go_router forbids parameterized branch
         // defaults). Switching tabs preserves each screen's state and

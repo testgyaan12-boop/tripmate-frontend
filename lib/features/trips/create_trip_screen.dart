@@ -11,11 +11,11 @@ import '../../core/data/refresh.dart';
 import '../../core/network/api_error.dart';
 import '../auth/presentation/widgets/auth_text_field.dart';
 
-/// Create New Trip: name, start/destination (ORS autocomplete + current
-/// location), travel date picker, day stepper. After creation the map
-/// auto-generates the start → places → destination route.
+/// Create or Edit Trip: name, start/destination (ORS autocomplete + current
+/// location), travel date picker, day stepper. Pass [editTripId] to edit.
 class CreateTripScreen extends ConsumerStatefulWidget {
-  const CreateTripScreen({super.key});
+  final String? editTripId;
+  const CreateTripScreen({super.key, this.editTripId});
   @override
   ConsumerState<CreateTripScreen> createState() => _State();
 }
@@ -29,9 +29,9 @@ class _GeoHit {
 
 class _State extends ConsumerState<CreateTripScreen> {
   final _form = GlobalKey<FormState>();
-  final _name = TextEditingController(text: 'Mumbai to Ooty Road Trip');
-  final _start = TextEditingController(text: 'Mumbai');
-  final _dest = TextEditingController(text: 'Ooty');
+  final _name = TextEditingController();
+  final _start = TextEditingController();
+  final _dest = TextEditingController();
   final _startFocus = FocusNode();
   final _destFocus = FocusNode();
 
@@ -48,6 +48,7 @@ class _State extends ConsumerState<CreateTripScreen> {
   late DateTime _startDate = DateTime.now().add(const Duration(days: 30));
   int _days = 5;
   bool _busy = false;
+  bool get _isEdit => widget.editTripId != null;
 
   @override
   void dispose() {
@@ -67,6 +68,33 @@ class _State extends ConsumerState<CreateTripScreen> {
     super.initState();
     _startFocus.addListener(_onFocus);
     _destFocus.addListener(_onFocus);
+    if (_isEdit) _loadTrip();
+  }
+
+  Future<void> _loadTrip() async {
+    try {
+      final dio = ref.read(dioClientProvider).dio;
+      final res = await dio.get('/api/trips/${widget.editTripId}');
+      if (!mounted) return;
+      final t = res.data['data'];
+      setState(() {
+        _name.text = (t['tripName'] ?? '').toString();
+        _start.text = (t['startName'] ?? '').toString();
+        _dest.text = (t['destName'] ?? '').toString();
+        if (t['startDate'] != null) {
+          try { _startDate = DateTime.parse(t['startDate'].toString()); } catch (_) {}
+        }
+        if (t['endDate'] != null && t['startDate'] != null) {
+          try {
+            final end = DateTime.parse(t['endDate'].toString());
+            _days = end.difference(_startDate).inDays + 1;
+            if (_days < 1) _days = 5;
+          } catch (_) {}
+        } else if (t['daysCount'] != null) {
+          _days = (t['daysCount'] as num).toInt();
+        }
+      });
+    } catch (_) {}
   }
   String get _dateLabel => DateFormat('d MMMM yyyy').format(_startDate);
   String get _rangeLabel =>
@@ -189,7 +217,7 @@ class _State extends ConsumerState<CreateTripScreen> {
     setState(() => _busy = true);
     try {
       final dio = ref.read(dioClientProvider).dio;
-      final res = await dio.post('/api/trips', data: {
+      final data = {
         'tripName': _name.text.trim(),
         'startName': _start.text.trim(),
         if (_startLat != null) 'startLat': _startLat,
@@ -200,12 +228,15 @@ class _State extends ConsumerState<CreateTripScreen> {
         'startDate': DateFormat('yyyy-MM-dd').format(_startDate),
         'endDate': DateFormat('yyyy-MM-dd').format(_endDate),
         'daysCount': _days,
-      });
-      final id = res.data['data']['id'];
+      };
+      final res = _isEdit
+          ? await dio.put('/api/trips/${widget.editTripId}', data: data)
+          : await dio.post('/api/trips', data: data);
+      final id = _isEdit ? widget.editTripId : res.data['data']['id'];
       if (!mounted) return;
       ref.invalidate(dashboardProvider);
       bumpData(ref);
-      context.go('/trips/$id/map');
+      context.go(_isEdit ? '/home' : '/trips/$id/map');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -221,7 +252,7 @@ class _State extends ConsumerState<CreateTripScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Create New Trip'),
+        title: Text(_isEdit ? 'Edit Trip' : 'Create New Trip'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/home'),
@@ -441,7 +472,7 @@ class _State extends ConsumerState<CreateTripScreen> {
                       ),
                       onPressed: _busy ? null : _create,
                       child:
-                          Text(_busy ? 'Creating…' : 'Create Trip'),
+                          Text(_busy ? ( _isEdit ? 'Saving…' : 'Creating…') : ( _isEdit ? 'Save Changes' : 'Create Trip')),
                     ),
                   ),
                 ],

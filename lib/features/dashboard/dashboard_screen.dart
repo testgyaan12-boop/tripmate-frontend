@@ -120,64 +120,78 @@ class _Body extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final name = (data.user['name'] ?? 'Traveller').toString();
     final trips = data.trips;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 110),
+    return Column(
       children: [
-        TripMateHomeTopBar(user: data.user),
-        const SizedBox(height: 16),
-        Text(
-          'Hello, $name 👋',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.3,
-            color: AppColors.textPrimary(context),
-          ),
-        ),
-        Text(
-          'Where to next?',
-          style: TextStyle(fontSize: 15, color: AppColors.textSecondary(context)),
-        ),
-        const SizedBox(height: 18),
-        if (trips.isEmpty)
-          _EmptyState()
-        else ...[
-          _FadeRise(delay: 0, child: _HeroCard(trip: trips.first)),
-          const SizedBox(height: 22),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              TripMateHomeTopBar(user: data.user),
+              const SizedBox(height: 16),
               Text(
-                'My Trips',
+                'Hello, $name 👋',
                 style: TextStyle(
-                  fontSize: 18,
+                  fontSize: 24,
                   fontWeight: FontWeight.w800,
+                  letterSpacing: -0.3,
                   color: AppColors.textPrimary(context),
                 ),
               ),
-              TextButton.icon(
-                onPressed: () => context.go('/trips/new'),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('New'),
+              Text(
+                'Where to next?',
+                style: TextStyle(fontSize: 15, color: AppColors.textSecondary(context)),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          ...trips.asMap().entries.map(
-                (e) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _FadeRise(
-                    delay: 80 * (e.key + 1),
+        ),
+        const SizedBox(height: 18),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
+            children: [
+              if (trips.isEmpty)
+                _EmptyState()
+              else ...[
+                _FadeRise(delay: 0, child: _HeroCard(trip: trips.first)),
+                const SizedBox(height: 22),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'My Trips',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary(context),
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: () => context.go('/trips/new'),
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('New'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ...trips.asMap().entries.map(
+                  (e) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _FadeRise(
+                      delay: 80 * (e.key + 1),
                     child: _TripCard(
                       trip: e.value,
                       image: _cardImages[e.key % _cardImages.length],
                       onLongPress: () =>
                           _confirmDelete(context, ref, e.value),
                     ),
+                    ),
                   ),
                 ),
-              ),
-        ],
+              ],
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -256,11 +270,11 @@ class _HeroCard extends StatelessWidget {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
                       ),
                       onPressed: () =>
                           context.go('/trips/${trip.id}/map'),
-                      child: const Text('View Map'),
+                      child: const FittedBox(child: Text('View Map')),
                     ),
                   ),
                 ),
@@ -275,11 +289,11 @@ class _HeroCard extends StatelessWidget {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
                       ),
                       onPressed: () =>
-                          context.go('/trips/${trip.id}/places'),
-                      child: const Text('Continue Planning'),
+                          context.go('/trips/${trip.id}/itinerary'),
+                      child: const FittedBox(fit: BoxFit.scaleDown, child: Text('Continue Planning')),
                     ),
                   ),
                 ),
@@ -307,7 +321,7 @@ class _TripCard extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: () => context.go('/trips/${trip.id}/map'),
+        onTap: () => context.go('/trips/${trip.id}/itinerary'),
         onLongPress: onLongPress,
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -346,6 +360,19 @@ class _TripCard extends StatelessWidget {
                           ),
                         ),
                         _StatusChip(label: trip.statusLabel, small: true),
+                        const SizedBox(width: 6),
+                        GestureDetector(
+                          onTap: () => context.go('/trips/${trip.id}/edit'),
+                          child: Container(
+                            width: 28, height: 28,
+                            decoration: BoxDecoration(
+                              color: AppColors.inputFill(context),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(Icons.edit_outlined,
+                                size: 15, color: AppColors.textSecondary(context)),
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 2),
@@ -356,6 +383,24 @@ class _TripCard extends StatelessWidget {
                         color: AppColors.textSecondary(context),
                       ),
                     ),
+                    if (trip.dateLabel.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Icon(Icons.calendar_today_outlined,
+                              size: 11, color: AppColors.textSecondary(context)),
+                          const SizedBox(width: 4),
+                          Text(
+                            trip.dateLabel,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textSecondary(context),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     Row(
                       children: [

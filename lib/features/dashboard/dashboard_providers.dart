@@ -40,6 +40,27 @@ class TripSummary {
     }
     return '–';
   }
+
+  String get dateLabel {
+    final s = trip['startDate'];
+    final e = trip['endDate'];
+    if (s == null && e == null) return '';
+    String fmt(String? v) {
+      if (v == null) return '';
+      try {
+        final d = DateTime.parse(v);
+        final months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return '${d.day} ${months[d.month - 1]}';
+      } catch (_) {
+        return v;
+      }
+    }
+    final a = fmt(s);
+    final b = fmt(e);
+    if (a.isNotEmpty && b.isNotEmpty) return '$a - $b';
+    if (a.isNotEmpty) return a;
+    return b;
+  }
 }
 
 class DashboardData {
