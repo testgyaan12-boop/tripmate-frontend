@@ -25,7 +25,7 @@ class TripNavBar extends ConsumerWidget {
       );
       return;
     }
-    const routes = ['places', 'expenses', 'itinerary', 'members'];
+    const routes = ['itinerary', 'members', 'expenses', 'gallery'];
     context.go('/trips/$tripId/${routes[i - 1]}');
   }
 
@@ -33,10 +33,10 @@ class TripNavBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     const items = [
       (Icons.home_outlined, Icons.home, 'Home'),
-      (Icons.place_outlined, Icons.place, 'Places'),
-      (Icons.wallet_outlined, Icons.wallet, 'Expenses'),
       (Icons.timeline_outlined, Icons.timeline, 'Itinerary'),
       (Icons.group_outlined, Icons.group, 'People'),
+      (Icons.wallet_outlined, Icons.wallet, 'Expenses'),
+      (Icons.photo_library_outlined, Icons.photo_library, 'Gallery'),
     ];
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return SafeArea(

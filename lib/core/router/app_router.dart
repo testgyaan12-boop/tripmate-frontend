@@ -15,6 +15,7 @@ import '../../features/members/members_screen.dart';
 import '../../features/members/member_list_screen.dart';
 import '../../features/members/invite_friend_screen.dart';
 import '../../features/members/trip_history_screen.dart';
+import '../../features/gallery/trip_gallery_screen.dart';
 import '../../features/expense/expenses_screen.dart';
 import '../../features/expense/add_expense_screen.dart';
 import '../../features/expense/expense_detail_screen.dart';
@@ -37,10 +38,11 @@ final appRouterProvider = Provider((_) => buildRouter());
 int _tabIndexFor(String location) {
   if (location.startsWith('/home')) return 0;
   if (location.endsWith('/map')) return -1;
-  if (location.contains('/places')) return 1;
-  if (location.contains('/expenses')) return 2;
-  if (location.endsWith('/itinerary')) return 3;
-  if (location.endsWith('/members')) return 4;
+  if (location.endsWith('/itinerary')) return 1;
+  if (location.endsWith('/members')) return 2;
+  if (location.contains('/expenses')) return 3;
+  if (location.contains('/gallery')) return 4;
+  if (location.contains('/places')) return -1;
   return 0;
 }
 
@@ -154,6 +156,16 @@ GoRouter buildRouter() => GoRouter(
                     GoRoute(
                       path: 'members',
                       builder: (_, s) => MembersScreen(
+                          tripId:
+                              s.pathParameters['tripId']!),
+                    ),
+                  ],
+                ),
+                StatefulShellBranch(
+                  routes: [
+                    GoRoute(
+                      path: 'gallery',
+                      builder: (_, s) => TripGalleryScreen(
                           tripId:
                               s.pathParameters['tripId']!),
                     ),
