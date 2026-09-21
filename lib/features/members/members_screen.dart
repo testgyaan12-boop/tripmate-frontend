@@ -9,6 +9,7 @@ import '../../core/data/refresh.dart';
 import 'widgets/people_widgets.dart';
 import 'share_link_bottom_sheet.dart';
 import '../../shared/widgets/top_bar.dart' show DarkModeToggle, NotificationsButton;
+import '../../shared/widgets/trip_selector_sheet.dart';
 import '../../core/constants/app_colors.dart';
 import '../../shared/widgets/not_member_card.dart';
 
@@ -205,15 +206,15 @@ class _State extends ConsumerState<MembersScreen> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('People'),
+        title: TripDropdown(tripId: widget.tripId),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/trips/${widget.tripId}/map'),
         ),
-        actions: const [
-          DarkModeToggle(),
-          NotificationsButton(),
-          SizedBox(width: 8),
+        actions: [
+          const DarkModeToggle(),
+          const NotificationsButton(),
+          const SizedBox(width: 8),
         ],
       ),
       body: _loading

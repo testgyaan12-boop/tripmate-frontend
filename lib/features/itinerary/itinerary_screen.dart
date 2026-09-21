@@ -9,6 +9,7 @@ import '../../core/network/api_error.dart';
 import '../../core/constants/app_colors.dart';
 import '../../shared/widgets/not_member_card.dart';
 import '../../shared/widgets/top_bar.dart' show DarkModeToggle, NotificationsButton;
+import '../../shared/widgets/trip_selector_sheet.dart';
 import '../../core/data/refresh.dart';
 import 'ai_questions_sheet.dart';
 
@@ -249,13 +250,6 @@ class _State extends ConsumerState<ItineraryScreen> {
     }
   }
 
-  String get _routeTitle {
-    final s = _trip?['startName']?.toString() ?? '';
-    final d = _trip?['destName']?.toString() ?? '';
-    if (s.isNotEmpty && d.isNotEmpty) return '$s → $d';
-    return (_trip?['tripName'] ?? 'Itinerary').toString();
-  }
-
   String _dayDate(int day) {
     final s = _trip?['startDate']?.toString();
     if (s == null) return 'Day $day';
@@ -331,15 +325,15 @@ class _State extends ConsumerState<ItineraryScreen> {
     return Scaffold(
       backgroundColor: AppColors.scaffold(context),
       appBar: AppBar(
-        title: Text(_routeTitle),
+        title: TripDropdown(tripId: widget.tripId),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/trips/${widget.tripId}/map'),
         ),
-        actions: const [
-          DarkModeToggle(),
-          NotificationsButton(),
-          SizedBox(width: 8),
+        actions: [
+          const DarkModeToggle(),
+          const NotificationsButton(),
+          const SizedBox(width: 8),
         ],
       ),
       floatingActionButton: _notMember

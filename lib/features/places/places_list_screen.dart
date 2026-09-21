@@ -8,6 +8,7 @@ import '../../core/network/api_error.dart';
 import '../../core/constants/app_colors.dart';
 import '../../shared/widgets/not_member_card.dart';
 import '../../shared/widgets/top_bar.dart' show DarkModeToggle, NotificationsButton;
+import '../../shared/widgets/trip_selector_sheet.dart';
 import '../../core/data/refresh.dart';
 import 'presentation/widgets/place_gallery.dart';
 
@@ -245,7 +246,7 @@ class _State extends ConsumerState<PlacesListScreen>
     return Scaffold(
       backgroundColor: AppColors.scaffold(context),
       appBar: AppBar(
-        title: const Text('Places'),
+        title: TripDropdown(tripId: widget.tripId),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go('/trips/${widget.tripId}/map'),
