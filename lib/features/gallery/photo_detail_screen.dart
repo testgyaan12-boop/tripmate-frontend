@@ -74,15 +74,13 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: AppColors.scaffold(context),
       appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Photo', style: TextStyle(color: Colors.white)),
+        title: const Text('Photo'),
         actions: [
           IconButton(
             icon: const Icon(Icons.share),
@@ -95,9 +93,9 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Colors.white))
+          ? const Center(child: CircularProgressIndicator())
           : _item == null
-              ? const Center(child: Text('Not found', style: TextStyle(color: Colors.white70)))
+              ? Center(child: Text('Not found', style: TextStyle(color: AppColors.textMuted(context))))
               : _buildDetail(),
     );
   }
@@ -119,13 +117,31 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
             minScale: 0.5,
             maxScale: 4,
             child: Center(
-              child: Image.network(url, fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) => const Icon(Icons.broken_image, color: Colors.white54, size: 60)),
+              child: Image.network(
+                url,
+                fit: BoxFit.contain,
+                loadingBuilder: (ctx, child, progress) {
+                  if (progress == null) return child;
+                  return Center(
+                    child: CircularProgressIndicator(
+                      value: progress.expectedTotalBytes != null
+                          ? progress.cumulativeBytesLoaded /
+                              progress.expectedTotalBytes!
+                          : null,
+                    ),
+                  );
+                },
+                errorBuilder: (_, _, _) => Icon(
+                  Icons.broken_image,
+                  color: AppColors.textMuted(context),
+                  size: 60,
+                ),
+              ),
             ),
           ),
         ),
         Container(
-          color: const Color(0xFF1A1A1A),
+          color: AppColors.card(context),
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -144,10 +160,10 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(userName.isNotEmpty ? userName : 'Unknown',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
+                            style: TextStyle(color: AppColors.textPrimary(context), fontWeight: FontWeight.w600, fontSize: 14)),
                         if (createdAt.isNotEmpty)
                           Text(_formatDate(createdAt),
-                              style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                              style: TextStyle(color: AppColors.textSecondary(context), fontSize: 12)),
                       ],
                     ),
                   ),
@@ -155,14 +171,14 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
               ),
               if (caption.isNotEmpty) ...[
                 const SizedBox(height: 10),
-                Text(caption, style: const TextStyle(color: Colors.white, fontSize: 14)),
+                Text(caption, style: TextStyle(color: AppColors.textPrimary(context), fontSize: 14)),
               ],
               if (location.isNotEmpty) ...[
                 const SizedBox(height: 6),
                 Row(children: [
-                  const Icon(Icons.location_on, size: 14, color: Colors.white54),
+                  Icon(Icons.location_on, size: 14, color: AppColors.textSecondary(context)),
                   const SizedBox(width: 4),
-                  Text(location, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                  Text(location, style: TextStyle(color: AppColors.textSecondary(context), fontSize: 12)),
                 ]),
               ],
               const SizedBox(height: 12),
@@ -173,16 +189,16 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
                     child: Row(
                       children: [
                         Icon(liked ? Icons.favorite : Icons.favorite_border,
-                            color: liked ? Colors.red : Colors.white54, size: 20),
+                            color: liked ? Colors.red : AppColors.textSecondary(context), size: 20),
                         const SizedBox(width: 4),
-                        Text('$likeCount', style: const TextStyle(color: Colors.white, fontSize: 13)),
+                        Text('$likeCount', style: TextStyle(color: AppColors.textPrimary(context), fontSize: 13)),
                       ],
                     ),
                   ),
                   const SizedBox(width: 24),
-                  Icon(Icons.chat_bubble_outline, color: Colors.white54, size: 20),
+                  Icon(Icons.chat_bubble_outline, color: AppColors.textSecondary(context), size: 20),
                   const SizedBox(width: 4),
-                  Text('${comments.length}', style: const TextStyle(color: Colors.white, fontSize: 13)),
+                  Text('${comments.length}', style: TextStyle(color: AppColors.textPrimary(context), fontSize: 13)),
                 ],
               ),
               const SizedBox(height: 12),
@@ -200,9 +216,9 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(cName.isNotEmpty ? cName : 'User',
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12)),
+                              style: TextStyle(color: AppColors.textPrimary(context), fontWeight: FontWeight.w600, fontSize: 12)),
                           const SizedBox(width: 6),
-                          Expanded(child: Text(cText, style: const TextStyle(color: Colors.white70, fontSize: 12))),
+                          Expanded(child: Text(cText, style: TextStyle(color: AppColors.textSecondary(context), fontSize: 12))),
                         ],
                       );
                     },
@@ -214,12 +230,12 @@ class _PhotoDetailScreenState extends ConsumerState<PhotoDetailScreen> {
                   Expanded(
                     child: TextField(
                       controller: _commentCtrl,
-                      style: const TextStyle(color: Colors.white),
+                      style: TextStyle(color: AppColors.textPrimary(context)),
                       decoration: InputDecoration(
                         hintText: 'Add a comment...',
-                        hintStyle: const TextStyle(color: Colors.white38),
+                        hintStyle: TextStyle(color: AppColors.textMuted(context)),
                         filled: true,
-                        fillColor: const Color(0xFF2A2A2A),
+                        fillColor: AppColors.inputFill(context),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide.none,

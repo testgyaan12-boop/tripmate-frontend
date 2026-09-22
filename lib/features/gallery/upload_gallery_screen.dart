@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -16,6 +16,7 @@ class UploadGalleryScreen extends ConsumerStatefulWidget {
 
 class _UploadGalleryScreenState extends ConsumerState<UploadGalleryScreen> {
   final List<XFile> _selected = [];
+  final Map<int, Uint8List> _thumbBytes = {};
   final _captionCtrl = TextEditingController();
   final _locationCtrl = TextEditingController();
   final _albumCtrl = TextEditingController();
@@ -36,36 +37,56 @@ class _UploadGalleryScreenState extends ConsumerState<UploadGalleryScreen> {
   Dio get _dio => ref.read(dioClientProvider).dio;
 
   Future<void> _pickImages() async {
-    final images = await _picker.pickMultiImage(imageQuality: 80);
-    setState(() {
-      _selected.addAll(images);
-      _fileType = 'PHOTO';
-    });
+    final images = await _picker.pickMultiImage(
+      imageQuality: 80,
+      maxWidth: 1920,
+      maxHeight: 1920,
+    );
+    for (final img in images) {
+      final idx = _selected.length;
+      _selected.add(img);
+      _loadThumb(idx, img);
+    }
+    setState(() => _fileType = 'PHOTO');
   }
 
   Future<void> _pickVideo() async {
     final video = await _picker.pickVideo(source: ImageSource.gallery, maxDuration: const Duration(minutes: 5));
     if (video != null) {
-      setState(() {
-        _selected.add(video);
-        _fileType = 'VIDEO';
-      });
+      final idx = _selected.length;
+      _selected.add(video);
+      _loadThumb(idx, video);
+      setState(() => _fileType = 'VIDEO');
     }
   }
 
   Future<void> _takePhoto() async {
-    final photo = await _picker.pickImage(source: ImageSource.camera, imageQuality: 80);
+    final photo = await _picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 80,
+      maxWidth: 1920,
+      maxHeight: 1920,
+    );
     if (photo != null) {
-      setState(() {
-        _selected.add(photo);
-        _fileType = 'PHOTO';
-      });
+      final idx = _selected.length;
+      _selected.add(photo);
+      _loadThumb(idx, photo);
+      setState(() => _fileType = 'PHOTO');
     }
+  }
+
+  Future<void> _loadThumb(int idx, XFile file) async {
+    try {
+      final bytes = await file.readAsBytes();
+      if (mounted) setState(() => _thumbBytes[idx] = bytes);
+    } catch (_) {}
   }
 
   void _remove(int index) {
     setState(() => _selected.removeAt(index));
   }
+
+  String _cloudFolder() => 'tripmate/${widget.tripId}';
 
   Future<void> _upload() async {
     if (_selected.isEmpty) return;
@@ -74,15 +95,19 @@ class _UploadGalleryScreenState extends ConsumerState<UploadGalleryScreen> {
     for (var i = 0; i < _selected.length; i++) {
       final file = _selected[i];
       try {
+        final bytes = await file.readAsBytes();
         final fileName = file.name;
+        final isVideo = file.mimeType?.startsWith('video') == true ||
+            file.path.toLowerCase().endsWith('.mp4') ||
+            file.path.toLowerCase().endsWith('.mov');
+
         final formData = FormData.fromMap({
-          'file': await MultipartFile.fromFile(file.path, filename: fileName),
-          'upload_preset': 'tripmate_unsigned',
-          'folder': 'tripmate/${widget.tripId}',
+          'file': MultipartFile.fromBytes(bytes, filename: fileName),
+          'folder': _cloudFolder(),
         });
 
         final res = await _dio.post(
-          'https://api.cloudinary.com/v1_1/demo/image/upload',
+          '/api/files/upload-cloudinary',
           data: formData,
           onSendProgress: (sent, total) {
             if (total > 0) {
@@ -91,13 +116,16 @@ class _UploadGalleryScreenState extends ConsumerState<UploadGalleryScreen> {
           },
         );
 
-        final url = res.data['secure_url'] ?? res.data['url'] ?? '';
-        final thumb = (res.data['thumbnail_url'] ?? url).toString();
+        final data = res.data['data'];
+        final url = data['url'] ?? '';
+        final thumb = data['thumbnailUrl'] ?? url;
+
+        final fileType = isVideo ? 'VIDEO' : _fileType;
 
         await _dio.post('/api/trips/${widget.tripId}/gallery', data: {
           'cloudinaryUrl': url,
           'thumbnailUrl': thumb,
-          'fileType': _fileType,
+          'fileType': fileType,
           'caption': _captionCtrl.text.trim().isNotEmpty ? _captionCtrl.text.trim() : null,
           'locationName': _locationCtrl.text.trim().isNotEmpty ? _locationCtrl.text.trim() : null,
           'albumName': _albumCtrl.text.trim().isNotEmpty ? _albumCtrl.text.trim() : null,
@@ -165,8 +193,14 @@ class _UploadGalleryScreenState extends ConsumerState<UploadGalleryScreen> {
                             children: [
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(10),
-                                child: Image.file(File(_selected[i].path),
-                                    width: 90, height: 90, fit: BoxFit.cover),
+                                child: _thumbBytes[i] != null
+                                    ? Image.memory(_thumbBytes[i]!,
+                                        width: 90, height: 90, fit: BoxFit.cover)
+                                    : Container(
+                                        width: 90, height: 90,
+                                        color: AppColors.card(context),
+                                        child: Icon(Icons.image, color: AppColors.textMuted(context)),
+                                      ),
                               ),
                               Positioned(
                                 top: 4, right: 4,

@@ -73,24 +73,61 @@ class _State extends ConsumerState<MapScreen> {
         final km = d['totalKm'];
         if (km != null) _distKm = (km as num).toDouble();
       } catch (_) {}
-      final placePts = <LatLng>[];
+      // Labeled points: start + places + dest, each with a display name.
+      final labeled = <MapEntry<String, LatLng>>[];
+      final startName = (_trip?['startName']?.toString() ?? '').trim();
+      if (_startPt != null) {
+        labeled.add(MapEntry(startName.isNotEmpty ? startName : 'Start', _startPt!));
+      }
       for (final e in list) {
         final p = Map<String, dynamic>.from(e['place']);
         final pt = _validPt(p['latitude'], p['longitude']);
-        if (pt != null) placePts.add(pt);
-      }
-      final combined = [
-        _startPt,
-        ...placePts,
-        _destPt,
-      ].whereType<LatLng>().toList();
-      final pts = <LatLng>[];
-      for (final p in combined) {
-        if (pts.isEmpty ||
-            (pts.last.latitude - p.latitude).abs() > 1e-6 ||
-            (pts.last.longitude - p.longitude).abs() > 1e-6) {
-          pts.add(p);
+        if (pt != null) {
+          final n = (p['name']?.toString() ?? '').trim();
+          labeled.add(MapEntry(n.isNotEmpty ? n : 'Stop', pt));
         }
+      }
+      final destName = (_trip?['destName']?.toString() ?? '').trim();
+      if (_destPt != null) {
+        labeled.add(MapEntry(destName.isNotEmpty ? destName : 'Destination', _destPt!));
+      }
+      // Drop consecutive duplicates. Jump legs (>3000 km, i.e. wrong pins)
+      // are excluded ONLY when the chain exceeds the routing provider's
+      // 6,000 km limit — legit long trips (Delhi→London) stay untouched.
+      const dist = Distance();
+      final deduped = <LatLng>[];
+      for (final e in labeled) {
+        if (deduped.isEmpty ||
+            (deduped.last.latitude - e.value.latitude).abs() > 1e-6 ||
+            (deduped.last.longitude - e.value.longitude).abs() > 1e-6) {
+          deduped.add(e.value);
+        }
+      }
+      double chainM = 0;
+      for (var i = 1; i < deduped.length; i++) {
+        chainM += dist.as(LengthUnit.Meter, deduped[i - 1], deduped[i]);
+      }
+      final pts = <LatLng>[];
+      final skipped = <String>[];
+      if (chainM > 6000000) {
+        for (var i = 0; i < labeled.length; i++) {
+          final e = labeled[i];
+          if (pts.isNotEmpty) {
+            final last = pts.last;
+            if ((last.latitude - e.value.latitude).abs() <= 1e-6 &&
+                (last.longitude - e.value.longitude).abs() <= 1e-6) {
+              continue;
+            }
+            final legKm = dist.as(LengthUnit.Kilometer, last, e.value);
+            if (legKm > 3000) {
+              skipped.add('${e.key} (~${legKm.round()} km away)');
+              continue;
+            }
+          }
+          pts.add(e.value);
+        }
+      } else {
+        pts.addAll(deduped);
       }
       List<LatLng> route = List.from(pts);
       if (pts.length >= 2) {
@@ -115,7 +152,6 @@ class _State extends ConsumerState<MapScreen> {
         }
       }
       if (_distKm == null && route.length >= 2) {
-        const dist = Distance();
         double km = 0;
         for (var i = 1; i < route.length; i++) {
           km += dist.as(LengthUnit.Kilometer, route[i - 1], route[i]);
@@ -130,6 +166,15 @@ class _State extends ConsumerState<MapScreen> {
         _loading = false;
       });
       _fitBounds();
+      if (skipped.isNotEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                '${skipped.join(', ')} too far for driving directions — excluded from route.'),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
