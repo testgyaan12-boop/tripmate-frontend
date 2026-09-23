@@ -217,7 +217,9 @@ class _State extends ConsumerState<AiProposalScreen> {
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Text(
-                    'Draft by $_provider · $_remaining of 2 free AI plans left · drag days to reorder',
+                    _remaining < 0
+                        ? 'Draft by $_provider · Unlimited AI plans (Pro) · drag days to reorder'
+                        : 'Draft by $_provider · $_remaining of 2 free AI plans left · drag days to reorder',
                     style: const TextStyle(
                         fontSize: 12, color: Color(0xFF1D4ED8)),
                   ),

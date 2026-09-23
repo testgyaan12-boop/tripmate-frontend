@@ -119,6 +119,7 @@ class _UploadGalleryScreenState extends ConsumerState<UploadGalleryScreen> {
         final data = res.data['data'];
         final url = data['url'] ?? '';
         final thumb = data['thumbnailUrl'] ?? url;
+        final fileBytes = data['bytes'];
 
         final fileType = isVideo ? 'VIDEO' : _fileType;
 
@@ -126,6 +127,7 @@ class _UploadGalleryScreenState extends ConsumerState<UploadGalleryScreen> {
           'cloudinaryUrl': url,
           'thumbnailUrl': thumb,
           'fileType': fileType,
+          'fileSizeBytes': fileBytes?.toString(),
           'caption': _captionCtrl.text.trim().isNotEmpty ? _captionCtrl.text.trim() : null,
           'locationName': _locationCtrl.text.trim().isNotEmpty ? _locationCtrl.text.trim() : null,
           'albumName': _albumCtrl.text.trim().isNotEmpty ? _albumCtrl.text.trim() : null,

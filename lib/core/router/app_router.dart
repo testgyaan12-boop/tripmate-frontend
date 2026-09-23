@@ -22,6 +22,7 @@ import '../../features/expense/expense_detail_screen.dart';
 import '../../features/expense/settlement_screen.dart';
 import '../../features/itinerary/itinerary_screen.dart';
 import '../../features/itinerary/ai_proposal_screen.dart';
+import '../../features/subscription/subscription_screen.dart';
 import '../../features/chat/chat_screen.dart';
 import '../../features/invite/join_screen.dart';
 import '../../features/notifications/notifications_screen.dart';
@@ -230,6 +231,9 @@ GoRouter buildRouter() => GoRouter(
         GoRoute(
             path: '/notifications',
             builder: (_, _) => const NotificationsScreen()),
+        GoRoute(
+            path: '/subscription',
+            builder: (_, _) => const SubscriptionScreen()),
         GoRoute(
             path: '/profile',
             builder: (_, _) => const ProfileScreen()),

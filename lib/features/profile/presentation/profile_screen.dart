@@ -560,6 +560,13 @@ class _State extends ConsumerState<ProfileScreen> {
       ),
       const SizedBox(height: 8),
       SettingsTile(
+        icon: Icons.workspace_premium_outlined,
+        title: 'Subscription',
+        subtitle: 'Free, Pro & Family plans',
+        onTap: () => context.go('/subscription'),
+      ),
+      const SizedBox(height: 8),
+      SettingsTile(
         icon: Icons.help_outline,
         title: 'Help & Support',
         onTap: () => showDialog(

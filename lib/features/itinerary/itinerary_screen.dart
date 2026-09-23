@@ -118,15 +118,13 @@ class _State extends ConsumerState<ItineraryScreen> {
     try {
       final q = await dio
           .get('/api/trips/${widget.tripId}/itinerary/ai/quota');
+      final unlimited = q.data['data']['unlimited'] == true;
       final remaining =
           ((q.data['data']['remaining'] ?? 0) as num).toInt();
       if (!mounted) return;
-      if (remaining <= 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-                'Free AI plans used (2/2 for this trip). Use Quick plan.')),
-        );
+      if (!unlimited && remaining <= 0) {
+        _showAiPaywall(
+            'Free AI plans used (2/2 for this trip). Upgrade to Pro for unlimited AI planning.');
         return;
       }
       final answers = await showModalBottomSheet<Map<String, dynamic>>(
@@ -218,15 +216,13 @@ class _State extends ConsumerState<ItineraryScreen> {
     try {
       final q = await dio
           .get('/api/trips/${widget.tripId}/places/ai/quota');
+      final unlimited = q.data['data']['unlimited'] == true;
       final remaining =
           ((q.data['data']['remaining'] ?? 0) as num).toInt();
       if (!mounted) return;
-      if (remaining <= 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content:
-                Text('Free suggestions used (5/5 for this trip).')),
-        );
+      if (!unlimited && remaining <= 0) {
+        _showAiPaywall(
+            'Free suggestions used (5/5 for this trip). Upgrade to Pro for unlimited AI suggestions.');
         return;
       }
       final req = await showModalBottomSheet<_DaySuggestReq>(
@@ -380,6 +376,30 @@ class _State extends ConsumerState<ItineraryScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Pro paywall for exhausted free AI quota.
+  void _showAiPaywall(String msg) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('AI Planner ✨'),
+        content: Text('$msg\n\nAvailable in the Pro plan.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Maybe later'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              context.go('/subscription');
+            },
+            child: const Text('Upgrade Now'),
+          ),
+        ],
+      ),
+    );
   }
 
   String _dayDate(int day) {
@@ -697,7 +717,9 @@ class _DaySuggestSheetState extends State<_DaySuggestSheet> {
                   fontSize: 19, fontWeight: FontWeight.w800),
             ),
             Text(
-              '${widget.remaining} of 5 suggestion batches left · 1 day = 1 chance',
+              widget.remaining < 0
+                  ? 'Unlimited suggestions · Pro ✨'
+                  : '${widget.remaining} of 5 suggestion batches left · 1 day = 1 chance',
               style: const TextStyle(
                   fontSize: 12, color: Color(0xFF64748B)),
             ),

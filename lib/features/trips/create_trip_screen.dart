@@ -239,12 +239,41 @@ class _State extends ConsumerState<CreateTripScreen> {
       context.go(_isEdit ? '/home' : '/trips/$id/map');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(apiErrorMessage(e))),
-      );
+      final msg = apiErrorMessage(e);
+      if (!_isEdit && msg.contains('Trip limit reached')) {
+        _showUpgradeDialog(msg);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg)),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Free-limit paywall: Upgrade Now -> subscription screen.
+  void _showUpgradeDialog(String msg) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Trip limit reached'),
+        content: Text('$msg\n\nUpgrade to Pro for unlimited trips.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Maybe later'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              context.go('/subscription');
+            },
+            child: const Text('Upgrade Now'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

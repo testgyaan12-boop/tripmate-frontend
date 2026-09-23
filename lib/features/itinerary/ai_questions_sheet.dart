@@ -77,7 +77,9 @@ class _AiQuestionsSheetState extends State<AiQuestionsSheet> {
               style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800),
             ),
             Text(
-              '${widget.remaining} of 2 free AI plans left for this trip',
+              widget.remaining < 0
+                  ? 'Unlimited AI plans · Pro ✨'
+                  : '${widget.remaining} of 2 free AI plans left for this trip',
               style: const TextStyle(
                   fontSize: 12, color: Color(0xFF64748B)),
             ),
