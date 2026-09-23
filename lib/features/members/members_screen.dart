@@ -44,7 +44,16 @@ class _State extends ConsumerState<MembersScreen> {
   @override
   void didUpdateWidget(covariant MembersScreen old) {
     super.didUpdateWidget(old);
-    if (old.tripId != widget.tripId) _load();
+    if (old.tripId != widget.tripId) {
+      // Trip switched: drop stale data, show loader while new data loads.
+      setState(() {
+        _loading = true;
+        _notMember = false;
+        _error = false;
+        _members = [];
+      });
+      _load();
+    }
   }
 
   Future<void> _load() async {

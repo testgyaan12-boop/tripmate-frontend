@@ -57,6 +57,12 @@ class _State extends ConsumerState<ExpensesScreen> {
         widget.initialTripId != null) {
       _tripId = widget.initialTripId;
       _chip = null;
+      // Trip switched: drop stale data, show loader while new data loads.
+      setState(() {
+        _loading = true;
+        _notMember = false;
+        _expenses = [];
+      });
       _load();
     }
   }

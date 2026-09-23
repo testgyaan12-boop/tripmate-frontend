@@ -105,7 +105,11 @@ class _TripDropdownState extends ConsumerState<TripDropdown> {
     if (selectedId == null || selectedId == widget.tripId || !mounted) return;
     final loc = GoRouterState.of(context).uri.toString();
     String tab = 'map';
-    if (loc.contains('/places')) {
+    if (loc.contains('/gallery')) {
+      tab = 'gallery';
+    } else if (loc.contains('/history')) {
+      tab = 'history';
+    } else if (loc.contains('/places')) {
       tab = 'places';
     } else if (loc.contains('/expenses')) {
       tab = 'expenses';
@@ -133,6 +137,7 @@ class _TripSearchSheetState extends State<_TripSearchSheet> {
   bool _loading = true;
   String _query = '';
   String? _error;
+  String? _selectingId;
 
   @override
   void initState() {
@@ -179,7 +184,12 @@ class _TripSearchSheetState extends State<_TripSearchSheet> {
     }).toList();
   }
 
-  void _select(String id) {
+  void _select(String id) async {
+    if (_selectingId != null) return;
+    setState(() => _selectingId = id);
+    // Let the spinner paint before the sheet pop + navigation.
+    await Future.delayed(const Duration(milliseconds: 350));
+    if (!mounted) return;
     Navigator.pop(context, id);
   }
 
@@ -373,7 +383,14 @@ class _TripSearchSheetState extends State<_TripSearchSheet> {
                                               ],
                                             ),
                                           ),
-                                          if (sel)
+                                          if (_selectingId == id)
+                                            const SizedBox(
+                                              width: 20,
+                                              height: 20,
+                                              child: CircularProgressIndicator(
+                                                  strokeWidth: 2),
+                                            )
+                                          else if (sel)
                                             const Icon(
                                                 Icons.check_circle,
                                                 color: AppColors.blue,

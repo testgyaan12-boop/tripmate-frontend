@@ -49,7 +49,11 @@ class _State extends ConsumerState<MapScreen> {
   @override
   void didUpdateWidget(covariant MapScreen old) {
     super.didUpdateWidget(old);
-    if (old.tripId != widget.tripId) _load();
+    if (old.tripId != widget.tripId) {
+      // Trip switched: show loader while new data loads.
+      setState(() => _loading = true);
+      _load();
+    }
   }
 
   @override

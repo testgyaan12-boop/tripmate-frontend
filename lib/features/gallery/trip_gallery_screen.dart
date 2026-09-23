@@ -56,6 +56,27 @@ class _TripGalleryScreenState extends ConsumerState<TripGalleryScreen>
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(covariant TripGalleryScreen old) {
+    super.didUpdateWidget(old);
+    if (old.tripId != widget.tripId) {
+      // Trip switched: drop stale data, show loader while new data loads.
+      setState(() {
+        _loading = true;
+        _loadingMore = false;
+        _notMember = false;
+        _photos = [];
+        _albums = [];
+        _contributors = [];
+        _stats = null;
+        _meta = null;
+        _page = 0;
+        _hasMore = true;
+      });
+      _load();
+    }
+  }
+
   Dio get _dio => ref.read(dioClientProvider).dio;
 
   Future<void> _load() async {
@@ -535,11 +556,15 @@ class _AlbumsView extends StatelessWidget {
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: albums.length,
-      itemBuilder: (_, i) {
+      itemBuilder: (ctx, i) {
         final a = albums[i];
         final name = (a['name'] ?? 'Album').toString();
         final count = a['count'] ?? 0;
-        return Container(
+        return InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => Navigator.push(ctx,
+              MaterialPageRoute(builder: (_) => _AlbumPhotosScreen(name: name, tripId: tripId))),
+          child: Container(
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -571,8 +596,76 @@ class _AlbumsView extends StatelessWidget {
               Icon(Icons.chevron_right, color: AppColors.textSecondary(context)),
             ],
           ),
+          ),
         );
       },
+    );
+  }
+}
+
+// ── Album Photos Screen ────────────────────────────────────────────
+
+class _AlbumPhotosScreen extends ConsumerStatefulWidget {
+  final String name;
+  final String tripId;
+  const _AlbumPhotosScreen({required this.name, required this.tripId});
+
+  @override
+  ConsumerState<_AlbumPhotosScreen> createState() => _AlbumPhotosScreenState();
+}
+
+class _AlbumPhotosScreenState extends ConsumerState<_AlbumPhotosScreen> {
+  List<Map<String, dynamic>> _photos = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final dio = ref.read(dioClientProvider).dio;
+      final res = await dio.get('/api/trips/${widget.tripId}/gallery',
+          queryParameters: {'album': widget.name, 'size': 100});
+      if (!mounted) return;
+      setState(() {
+        _photos = ((res.data['data']['items'] as List?) ?? [])
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.scaffold(context),
+      appBar: AppBar(
+        title: Text(widget.name),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _photos.isEmpty
+              ? Center(
+                  child: Text('No photos in this album',
+                      style: TextStyle(color: AppColors.textSecondary(context))))
+              : _PhotoGrid(
+                  photos: _photos,
+                  hasMore: false,
+                  loadingMore: false,
+                  onRefresh: _load,
+                  onLoadMore: () {},
+                  tripId: widget.tripId,
+                ),
     );
   }
 }
