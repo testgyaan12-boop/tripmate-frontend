@@ -118,7 +118,6 @@ class _Body extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final name = (data.user['name'] ?? 'Traveller').toString();
     final trips = data.trips;
     return Column(
       children: [
@@ -128,20 +127,6 @@ class _Body extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               TripMateHomeTopBar(user: data.user),
-              const SizedBox(height: 16),
-              Text(
-                'Hello, $name 👋',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.3,
-                  color: AppColors.textPrimary(context),
-                ),
-              ),
-              Text(
-                'Where to next?',
-                style: TextStyle(fontSize: 15, color: AppColors.textSecondary(context)),
-              ),
             ],
           ),
         ),
