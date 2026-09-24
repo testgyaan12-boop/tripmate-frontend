@@ -140,43 +140,153 @@ class _Body extends ConsumerWidget {
               else ...[
                 _FadeRise(delay: 0, child: _HeroCard(trip: trips.first)),
                 const SizedBox(height: 22),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'My Trips',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary(context),
-                      ),
-                    ),
-                    TextButton.icon(
-                      onPressed: () => context.go('/trips/new'),
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('New'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                ...trips.asMap().entries.map(
-                  (e) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _FadeRise(
-                      delay: 80 * (e.key + 1),
-                    child: _TripCard(
-                      trip: e.value,
-                      image: _cardImages[e.key % _cardImages.length],
-                      onLongPress: () =>
-                          _confirmDelete(context, ref, e.value),
-                    ),
-                    ),
-                  ),
+                _MyTripsSection(
+                  trips: trips,
+                  onDelete: (t) => _confirmDelete(context, ref, t),
                 ),
               ],
             ],
           ),
         ),
+      ],
+    );
+  }
+}
+
+class _MyTripsSection extends ConsumerStatefulWidget {
+  final List<TripSummary> trips;
+  final void Function(TripSummary trip) onDelete;
+  const _MyTripsSection({required this.trips, required this.onDelete});
+
+  @override
+  ConsumerState<_MyTripsSection> createState() => _MyTripsSectionState();
+}
+
+class _MyTripsSectionState extends ConsumerState<_MyTripsSection> {
+  bool _searching = false;
+  String _query = '';
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _query.trim().toLowerCase();
+    final visible = q.isEmpty
+        ? widget.trips
+        : widget.trips
+            .where((t) =>
+                '${t.name} ${t.route} ${t.ownerName}'.toLowerCase().contains(q))
+            .toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_searching)
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _ctrl,
+                  autofocus: true,
+                  onChanged: (v) => setState(() => _query = v),
+                  decoration: InputDecoration(
+                    hintText: 'Search my trips...',
+                    prefixIcon: const Icon(Icons.search, size: 22),
+                    suffixIcon: _query.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 20),
+                            onPressed: () {
+                              _ctrl.clear();
+                              setState(() => _query = '');
+                            },
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: AppColors.inputFill(context),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Close search',
+                onPressed: () {
+                  _ctrl.clear();
+                  setState(() {
+                    _searching = false;
+                    _query = '';
+                  });
+                },
+                icon: Icon(Icons.close,
+                    color: AppColors.textSecondary(context)),
+              ),
+            ],
+          )
+        else
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'My Trips',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary(context),
+                ),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: 'Search trips',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => setState(() => _searching = true),
+                    icon: Icon(Icons.search,
+                        color: AppColors.textSecondary(context)),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => context.go('/trips/new'),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('New'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        const SizedBox(height: 8),
+        if (visible.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Center(
+              child: Text(
+                'No trips found for "$_query"',
+                style: TextStyle(color: AppColors.textSecondary(context)),
+              ),
+            ),
+          )
+        else
+          ...visible.asMap().entries.map(
+                (e) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _FadeRise(
+                    delay: 80 * (e.key + 1),
+                    child: _TripCard(
+                      trip: e.value,
+                      image: _cardImages[widget.trips
+                              .indexOf(e.value) %
+                          _cardImages.length],
+                      onLongPress: () => widget.onDelete(e.value),
+                    ),
+                  ),
+                ),
+              ),
       ],
     );
   }
@@ -231,6 +341,16 @@ class _HeroCard extends StatelessWidget {
               'Road Trip',
               style: TextStyle(fontSize: 14, color: Color(0xCCFFFFFF)),
             ),
+            if (trip.ownerName.isNotEmpty)
+              Text(
+                'by ${trip.ownerName}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xCCFFFFFF)),
+              ),
             const SizedBox(height: 10),
             Row(
               children: [
@@ -368,6 +488,28 @@ class _TripCard extends StatelessWidget {
                         color: AppColors.textSecondary(context),
                       ),
                     ),
+                    if (trip.ownerName.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Icon(Icons.person_outline,
+                              size: 11, color: AppColors.textSecondary(context)),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              'by ${trip.ownerName}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textSecondary(context),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                     if (trip.dateLabel.isNotEmpty) ...[
                       const SizedBox(height: 3),
                       Row(
@@ -525,7 +667,6 @@ class _Stat extends StatelessWidget {
   final IconData icon;
   final String text;
   const _Stat({required this.icon, required this.text});
-
   @override
   Widget build(BuildContext context) {
     return Row(

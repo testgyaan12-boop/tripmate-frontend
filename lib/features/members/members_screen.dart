@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 import '../auth/presentation/auth_provider.dart' show dioClientProvider;
 import '../../core/network/api_error.dart';
+import '../../shared/widgets/upgrade_dialog.dart';
 import '../../core/data/refresh.dart';
 import 'widgets/people_widgets.dart';
 import 'share_link_bottom_sheet.dart';
@@ -443,9 +444,14 @@ class _State2 extends State<_JoinByCode> {
       _ctrl.clear();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(apiErrorMessage(e))),
-      );
+      final msg = apiErrorMessage(e);
+      if (isLimitMessage(msg)) {
+        showLimitUpgradeDialog(context, msg);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg)),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }

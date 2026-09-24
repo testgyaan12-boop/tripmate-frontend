@@ -6,6 +6,7 @@ import 'package:razorpay_flutter/razorpay_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/network/api_error.dart';
 import '../auth/presentation/auth_provider.dart' show dioClientProvider;
+import 'razorpay_web.dart';
 
 /// Premium subscription screen: current plan + Free/Pro/Family cards.
 /// Checkout is native Razorpay (Android). On web shows an upgrade nudge.
@@ -23,6 +24,8 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   bool _paying = false;
   String? _email;
   Razorpay? _razorpay;
+  Map<String, dynamic>? _pendingPlan;
+  String _pendingBilling = 'MONTHLY';
 
   static const _featureLabels = {
     'TRIP_LIMIT': 'Trips',
@@ -82,45 +85,58 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
 
   String get _currentCode => (_sub?['planCode'] ?? 'FREE').toString();
 
-  Future<void> _upgrade(Map<String, dynamic> plan) async {
-    if (kIsWeb) {
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Upgrade on mobile'),
-          content: const Text(
-              'Payments work in the TripMate Android app. Your plans stay in sync everywhere.'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
-          ],
-        ),
-      );
-      return;
-    }
-    final code = (plan['code'] ?? '').toString();
-    final billing = await _pickBilling(plan);
-    if (billing == null || !mounted) return;
+  /// Direct checkout — no intermediate popup. Opens the Razorpay payment
+  /// page at once (native on Android, JS bridge on web).
+  Future<void> _upgrade(Map<String, dynamic> plan, String billing) async {
+    if (!mounted) return;
     setState(() => _paying = true);
     try {
       final dio = ref.read(dioClientProvider).dio;
       final res = await dio.post('/api/billing/orders', data: {
-        'planCode': code,
+        'planCode': (plan['code'] ?? '').toString(),
         'billing': billing,
       });
       final order = Map<String, dynamic>.from(res.data['data'] as Map);
       final amount = (order['amount'] as num).toInt();
-      _razorpay!.open({
-        'key': order['keyId'],
-        'amount': amount,
-        'currency': order['currency'] ?? 'INR',
-        'name': 'TripMate',
-        'description': '${plan['name']} · ${billing == 'YEARLY' ? 'Yearly' : 'Monthly'}',
-        'order_id': order['orderId'],
-        'theme': {'color': '#2563EB'},
-        if (_email != null && _email!.isNotEmpty)
-          'prefill': {'email': _email},
-      });
+      final label =
+          '${plan['name']} · ${billing == 'YEARLY' ? 'Yearly' : 'Monthly'}';
+      _pendingPlan = plan;
+      _pendingBilling = billing;
+      if (kIsWeb) {
+        // Chrome/PWA: Razorpay.js checkout via index.html bridge.
+        Map<String, String>? result;
+        try {
+          result = await openRazorpayWebCheckout(
+            key: order['keyId'].toString(),
+            amount: amount,
+            currency: (order['currency'] ?? 'INR').toString(),
+            name: 'TripMate',
+            description: label,
+            orderId: order['orderId'].toString(),
+            email: _email,
+          );
+        } catch (e) {
+          // Checkout failed/dismissed — no money moved, safe to retry.
+          if (mounted) {
+            _showFailedDialog(plan, billing, apiErrorMessage(e));
+          }
+          return;
+        }
+        await _verify(
+            result['orderId']!, result['paymentId']!, result['signature']!);
+      } else {
+        _razorpay!.open({
+          'key': order['keyId'],
+          'amount': amount,
+          'currency': order['currency'] ?? 'INR',
+          'name': 'TripMate',
+          'description': label,
+          'order_id': order['orderId'],
+          'theme': {'color': '#2563EB'},
+          if (_email != null && _email!.isNotEmpty)
+            'prefill': {'email': _email},
+        });
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -132,76 +148,105 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     }
   }
 
-  Future<String?> _pickBilling(Map<String, dynamic> plan) {
-    final monthly = ((plan['monthlyPaise'] ?? 0) as num).toInt();
-    final yearly = ((plan['yearlyPaise'] ?? 0) as num).toInt();
-    final opts = <Map<String, String>>[];
-    if (monthly > 0) opts.add({'cycle': 'MONTHLY', 'label': 'Monthly · ${_rs(monthly)}'});
-    if (yearly > 0) opts.add({'cycle': 'YEARLY', 'label': 'Yearly · ${_rs(yearly)} (save)'});
-    if (opts.isEmpty) return Future.value(null);
-    if (opts.length == 1) return Future.value(opts.first['cycle']);
-    return showModalBottomSheet<String>(
+  void _onDowngrade() {
+    final end = (_sub?['endDate'] ?? '').toString();
+    String when = '';
+    if (end.isNotEmpty) {
+      try {
+        final dt = DateTime.parse(end);
+        when = ' Your plan stays active till ${dt.day}/${dt.month}/${dt.year}.';
+      } catch (_) {}
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('To move to Free, let the cycle end.$when')),
+    );
+  }
+
+  /// Checkout failed BEFORE any money moved — safe to retry payment.
+  void _showFailedDialog(
+      Map<String, dynamic> plan, String billing, String message) {
+    showDialog(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      builder: (ctx) => AlertDialog(
+        title: const Text('Payment failed'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _upgrade(plan, billing);
+            },
+            child: const Text('Retry'),
+          ),
+        ],
       ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 12),
-            Container(width: 40, height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.cardBorder(context),
-                borderRadius: BorderRadius.circular(2))),
-            const SizedBox(height: 12),
-            Text('Choose billing', style: TextStyle(
-                fontSize: 16, fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary(context))),
-            const SizedBox(height: 8),
-            for (final o in opts)
-              ListTile(
-                title: Text(o['label']!, style: TextStyle(
-                    color: AppColors.textPrimary(context),
-                    fontWeight: FontWeight.w600)),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.pop(ctx, o['cycle']),
-              ),
-            const SizedBox(height: 12),
-          ],
-        ),
+    );
+  }
+
+  /// Money may be deducted but activation unconfirmed — NEVER repay here.
+  /// Refresh pulls the true status (verify/webhook may have activated).
+  void _showPendingDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirming payment…'),
+        content: Text('$message\n\nIf money was deducted, Pro activates '
+            'automatically — just refresh status.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              setState(() => _loading = true);
+              _load();
+            },
+            child: const Text('Refresh status'),
+          ),
+        ],
       ),
     );
   }
 
   void _onSuccess(PaymentSuccessResponse r) async {
+    await _verify(r.orderId ?? '', r.paymentId ?? '', r.signature ?? '');
+  }
+
+  Future<void> _verify(String orderId, String paymentId, String signature) async {
     try {
       final dio = ref.read(dioClientProvider).dio;
       await dio.post('/api/billing/verify', data: {
-        'orderId': r.orderId,
-        'paymentId': r.paymentId,
-        'signature': r.signature,
+        'orderId': orderId,
+        'paymentId': paymentId,
+        'signature': signature,
       });
       if (!mounted) return;
+      _pendingPlan = null;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Welcome to Pro! 🎉'), backgroundColor: Colors.green),
       );
       setState(() => _loading = true);
       _load();
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(apiErrorMessage(e))),
-        );
-      }
+      if (mounted) _showPendingDialog(apiErrorMessage(e));
     }
   }
 
   void _onError(PaymentFailureResponse r) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Payment ${r.code ?? ''}: ${r.message ?? 'failed'}'.trim())),
-    );
+    final msg = 'Payment ${r.code ?? ''}: ${r.message ?? 'failed'}'.trim();
+    final plan = _pendingPlan;
+    if (plan != null) {
+      _showFailedDialog(plan, _pendingBilling, msg);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    }
   }
 
   void _onWallet(ExternalWalletResponse r) {
@@ -248,7 +293,8 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                       paying: _paying,
                       rs: _rs,
                       featureText: _featureText,
-                      onUpgrade: () => _upgrade(p),
+                      onPay: (b) => _upgrade(p, b),
+                      onDowngrade: _onDowngrade,
                     ),
                     const SizedBox(height: 12),
                   ],
@@ -385,11 +431,12 @@ class _PlanCard extends StatelessWidget {
   final bool paying;
   final String Function(int) rs;
   final String Function(String, String) featureText;
-  final VoidCallback onUpgrade;
+  final void Function(String billing) onPay;
+  final VoidCallback onDowngrade;
   const _PlanCard({
     required this.plan, required this.isCurrent, required this.isRecommended,
     required this.paying, required this.rs, required this.featureText,
-    required this.onUpgrade,
+    required this.onPay, required this.onDowngrade,
   });
 
   @override
@@ -509,19 +556,65 @@ class _PlanCard extends StatelessWidget {
                     ),
                     child: const Text('Current plan'),
                   )
-                : FilledButton(
-                    onPressed: paying ? null : onUpgrade,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: isRecommended ? Colors.white : AppColors.blue,
-                      foregroundColor: isRecommended ? const Color(0xFF1D4ED8) : Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    ),
-                    child: paying
-                        ? const SizedBox(width: 20, height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : Text(free ? 'Downgrade' : 'Upgrade Now',
-                            style: const TextStyle(fontWeight: FontWeight.w700)),
-                  ),
+                : free
+                    ? OutlinedButton(
+                        onPressed: onDowngrade,
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        child: const Text('Downgrade'),
+                      )
+                    : yearly > 0
+                        ? Row(
+                            children: [
+                              Expanded(
+                                child: SizedBox(
+                                  height: 48,
+                                  child: FilledButton(
+                                    onPressed: paying ? null : () => onPay('MONTHLY'),
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: isRecommended ? Colors.white : AppColors.blue,
+                                      foregroundColor: isRecommended ? const Color(0xFF1D4ED8) : Colors.white,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                    ),
+                                    child: Text('${rs(monthly)}/mo',
+                                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: SizedBox(
+                                  height: 48,
+                                  child: OutlinedButton(
+                                    onPressed: paying ? null : () => onPay('YEARLY'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: isRecommended ? Colors.white : AppColors.blue,
+                                      side: BorderSide(
+                                        color: isRecommended ? Colors.white70 : AppColors.blue,
+                                      ),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                    ),
+                                    child: Text('${rs(yearly)}/yr',
+                                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        : FilledButton(
+                            onPressed: paying ? null : () => onPay('MONTHLY'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: isRecommended ? Colors.white : AppColors.blue,
+                              foregroundColor: isRecommended ? const Color(0xFF1D4ED8) : Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
+                            child: paying
+                                ? const SizedBox(width: 20, height: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2))
+                                : Text('Buy ${rs(monthly)}/mo',
+                                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                          ),
           ),
         ],
       ),

@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:dio/dio.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/network/api_error.dart';
+import '../../shared/widgets/upgrade_dialog.dart';
 import '../../features/auth/presentation/auth_provider.dart' show dioClientProvider;
 
 class UploadGalleryScreen extends ConsumerStatefulWidget {
@@ -134,9 +136,15 @@ class _UploadGalleryScreenState extends ConsumerState<UploadGalleryScreen> {
         });
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed: ${file.name}'), backgroundColor: Colors.red),
-          );
+          final msg = apiErrorMessage(e);
+          if (isLimitMessage(msg)) {
+            showLimitUpgradeDialog(context, msg, title: 'Storage full');
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Failed: ${file.name} — $msg'),
+                  backgroundColor: Colors.red),
+            );
+          }
         }
       }
     }

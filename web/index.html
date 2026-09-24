@@ -31,6 +31,36 @@
 
   <title>tripmate_app</title>
   <link rel="manifest" href="manifest.json">
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script>
+    // Web checkout bridge for Flutter (PWA/Chrome).
+    // opts: {key, amount, currency, name, description, order_id, prefill}
+    function openRazorpayCheckout(opts, onSuccess, onFailure) {
+      try {
+        var rzp = new Razorpay({
+          key: opts.key,
+          amount: opts.amount,
+          currency: opts.currency,
+          name: opts.name,
+          description: opts.description,
+          order_id: opts.order_id,
+          theme: { color: '#2563EB' },
+          prefill: opts.prefill || {},
+          handler: function (res) {
+            onSuccess(res.razorpay_order_id, res.razorpay_payment_id, res.razorpay_signature);
+          },
+          modal: { ondismiss: function () { onFailure('Payment window closed'); } }
+        });
+        rzp.on('payment.failed', function (res) {
+          var d = (res && res.error && res.error.description) || 'Payment failed';
+          onFailure(d);
+        });
+        rzp.open();
+      } catch (err) {
+        onFailure('Checkout failed to open');
+      }
+    }
+  </script>
 </head>
 <body>
   <!--

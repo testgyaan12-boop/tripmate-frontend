@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../core/network/api_error.dart';
+import '../../shared/widgets/upgrade_dialog.dart';
 import '../../core/router/pending_invite.dart';
 import '../../core/storage/token_storage.dart';
 import '../auth/presentation/auth_provider.dart' show dioClientProvider;
@@ -111,9 +112,14 @@ class _State extends ConsumerState<JoinScreen> {
       // with the pending code intact for the ride back.
       if (mounted) {
         setState(() => _busy = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(apiErrorMessage(e))),
-        );
+        final msg = apiErrorMessage(e);
+        if (isLimitMessage(msg)) {
+          showLimitUpgradeDialog(context, msg);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(msg)),
+          );
+        }
       }
     }
   }
