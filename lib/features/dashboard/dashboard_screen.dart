@@ -3,11 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'dashboard_providers.dart';
 import '../../core/data/refresh.dart';
+import '../../core/data/trip_status.dart';
 import '../../core/network/api_error.dart';
 import '../../shared/widgets/trip_nav_bar.dart';
 import '../../shared/widgets/top_bar.dart';
 import '../../core/constants/app_colors.dart';
 import '../auth/presentation/auth_provider.dart' show dioClientProvider;
+import '../profile/data/profile_repository.dart' show profileProvider;
 
 const _cardImages = [
   'assets/images/trip_hero.jpg',
@@ -76,6 +78,80 @@ class _Body extends ConsumerWidget {
   final int unread;
   const _Body({required this.data, required this.unread});
 
+  static const _statusOptions = [
+    ('AUTO', 'Automatic', 'Derived from travel dates'),
+    ('PLANNING', 'Planning', 'Still putting the trip together'),
+    ('UPCOMING', 'Upcoming', 'Trip is coming up'),
+    ('ONGOING', 'Ongoing', 'Trip is happening now'),
+    ('COMPLETED', 'Completed', 'Trip is done'),
+  ];
+
+  Future<void> _changeStatus(
+      BuildContext context, WidgetRef ref, TripSummary trip) async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Text(
+                'Trip status',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary(ctx),
+                ),
+              ),
+            ),
+            for (final o in _statusOptions)
+              ListTile(
+                leading: Icon(
+                  o.$1 == 'AUTO'
+                      ? Icons.auto_awesome
+                      : Icons.flag_outlined,
+                  color: Color(TripStatus.statusColor(o.$2)),
+                ),
+                title: Text(o.$2,
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text(o.$3,
+                    style: const TextStyle(fontSize: 12)),
+                trailing: trip.rawStatus == o.$1
+                    ? Icon(Icons.check_circle, color: AppColors.primary)
+                    : null,
+                onTap: () => Navigator.pop(ctx, o.$1),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || picked == trip.rawStatus) return;
+    try {
+      await ref
+          .read(dioClientProvider)
+          .dio
+          .patch('/api/trips/${trip.id}/status', data: {'status': picked});
+      ref.invalidate(dashboardProvider);
+      ref.invalidate(profileProvider);
+      bumpData(ref);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Status updated')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(apiErrorMessage(e))),
+        );
+      }
+    }
+  }
+
   Future<void> _confirmDelete(
       BuildContext context, WidgetRef ref, TripSummary trip) async {
     final ok = await showDialog<bool>(
@@ -101,6 +177,7 @@ class _Body extends ConsumerWidget {
           .dio
           .delete('/api/trips/${trip.id}');
       ref.invalidate(dashboardProvider);
+      ref.invalidate(profileProvider);
       bumpData(ref);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -138,11 +215,22 @@ class _Body extends ConsumerWidget {
               if (trips.isEmpty)
                 _EmptyState()
               else ...[
-                _FadeRise(delay: 0, child: _HeroCard(trip: trips.first)),
+                _FadeRise(
+                  delay: 0,
+                  child: _HeroCard(
+                    trip: trips.first,
+                    onStatus: () => _changeStatus(context, ref, trips.first),
+                    onEdit: () =>
+                        context.go('/trips/${trips.first.id}/edit'),
+                    onDelete: () =>
+                        _confirmDelete(context, ref, trips.first),
+                  ),
+                ),
                 const SizedBox(height: 22),
                 _MyTripsSection(
                   trips: trips,
                   onDelete: (t) => _confirmDelete(context, ref, t),
+                  onStatus: (t) => _changeStatus(context, ref, t),
                 ),
               ],
             ],
@@ -156,7 +244,12 @@ class _Body extends ConsumerWidget {
 class _MyTripsSection extends ConsumerStatefulWidget {
   final List<TripSummary> trips;
   final void Function(TripSummary trip) onDelete;
-  const _MyTripsSection({required this.trips, required this.onDelete});
+  final void Function(TripSummary trip) onStatus;
+  const _MyTripsSection({
+    required this.trips,
+    required this.onDelete,
+    required this.onStatus,
+  });
 
   @override
   ConsumerState<_MyTripsSection> createState() => _MyTripsSectionState();
@@ -282,7 +375,10 @@ class _MyTripsSectionState extends ConsumerState<_MyTripsSection> {
                       image: _cardImages[widget.trips
                               .indexOf(e.value) %
                           _cardImages.length],
-                      onLongPress: () => widget.onDelete(e.value),
+                      onStatus: () => widget.onStatus(e.value),
+                      onEdit: () =>
+                          context.go('/trips/${e.value.id}/edit'),
+                      onDelete: () => widget.onDelete(e.value),
                     ),
                   ),
                 ),
@@ -294,7 +390,15 @@ class _MyTripsSectionState extends ConsumerState<_MyTripsSection> {
 
 class _HeroCard extends StatelessWidget {
   final TripSummary trip;
-  const _HeroCard({required this.trip});
+  final VoidCallback onStatus;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  const _HeroCard({
+    required this.trip,
+    required this.onStatus,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -327,7 +431,19 @@ class _HeroCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _StatusChip(label: trip.statusLabel),
+            Row(
+              children: [
+                _StatusChip(label: trip.statusLabel),
+                const Spacer(),
+                if (trip.isOwner)
+                  _TripMenu(
+                    onStatus: onStatus,
+                    onEdit: onEdit,
+                    onDelete: onDelete,
+                    light: true,
+                  ),
+              ],
+            ),
             const Spacer(),
             Text(
               trip.route,
@@ -414,9 +530,16 @@ class _HeroCard extends StatelessWidget {
 class _TripCard extends StatelessWidget {
   final TripSummary trip;
   final String image;
-  final VoidCallback? onLongPress;
-  const _TripCard(
-      {required this.trip, required this.image, this.onLongPress});
+  final VoidCallback onStatus;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  const _TripCard({
+    required this.trip,
+    required this.image,
+    required this.onStatus,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -427,7 +550,6 @@ class _TripCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
         onTap: () => context.go('/trips/${trip.id}/itinerary'),
-        onLongPress: onLongPress,
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
@@ -466,18 +588,12 @@ class _TripCard extends StatelessWidget {
                         ),
                         _StatusChip(label: trip.statusLabel, small: true),
                         const SizedBox(width: 6),
-                        GestureDetector(
-                          onTap: () => context.go('/trips/${trip.id}/edit'),
-                          child: Container(
-                            width: 28, height: 28,
-                            decoration: BoxDecoration(
-                              color: AppColors.inputFill(context),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Icon(Icons.edit_outlined,
-                                size: 15, color: AppColors.textSecondary(context)),
+                        if (trip.isOwner)
+                          _TripMenu(
+                            onStatus: onStatus,
+                            onEdit: onEdit,
+                            onDelete: onDelete,
                           ),
-                        ),
                       ],
                     ),
                     const SizedBox(height: 2),
@@ -578,6 +694,83 @@ class _TripCard extends StatelessWidget {
   }
 }
 
+class _TripMenu extends StatelessWidget {
+  final VoidCallback onStatus;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final bool light;
+  const _TripMenu({
+    required this.onStatus,
+    required this.onEdit,
+    required this.onDelete,
+    this.light = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      tooltip: 'Trip options',
+      position: PopupMenuPosition.under,
+      onSelected: (v) {
+        if (v == 'status') onStatus();
+        if (v == 'edit') onEdit();
+        if (v == 'delete') onDelete();
+      },
+      itemBuilder: (_) => const [
+        PopupMenuItem(
+          value: 'status',
+          child: _MenuRow(icon: Icons.flag_outlined, label: 'Change status'),
+        ),
+        PopupMenuItem(
+          value: 'edit',
+          child: _MenuRow(icon: Icons.edit_outlined, label: 'Edit trip'),
+        ),
+        PopupMenuItem(
+          value: 'delete',
+          child: _MenuRow(
+            icon: Icons.delete_outline,
+            label: 'Delete trip',
+            color: Color(0xFFDC2626),
+          ),
+        ),
+      ],
+      child: Container(
+        width: 30,
+        height: 30,
+        decoration: BoxDecoration(
+          color: light ? Colors.white24 : AppColors.inputFill(context),
+          borderRadius: BorderRadius.circular(9),
+        ),
+        child: Icon(
+          Icons.more_vert,
+          size: 18,
+          color: light ? Colors.white : AppColors.textSecondary(context),
+        ),
+      ),
+    );
+  }
+}
+
+class _MenuRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color? color;
+  const _MenuRow({required this.icon, required this.label, this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? AppColors.textPrimary(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 19, color: c),
+        const SizedBox(width: 12),
+        Text(label, style: TextStyle(fontSize: 14, color: c)),
+      ],
+    );
+  }
+}
+
 class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -627,18 +820,7 @@ class _StatusChip extends StatelessWidget {
   final bool small;
   const _StatusChip({required this.label, this.small = false});
 
-  Color get _color {
-    switch (label) {
-      case 'Finalized':
-        return const Color(0xFF10B981);
-      case 'Upcoming':
-        return const Color(0xFF2563EB);
-      case 'Completed':
-        return const Color(0xFF64748B);
-      default:
-        return const Color(0xFFF59E0B);
-    }
-  }
+  Color get _color => Color(TripStatus.statusColor(label));
 
   @override
   Widget build(BuildContext context) {

@@ -220,7 +220,8 @@ class TripHistoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final done = (trip['status'] ?? '') == 'FINALIZED';
+    final status = (trip['status'] ?? '').toString();
+    final done = status == 'FINALIZED' || status == 'COMPLETED';
     return Card(
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),

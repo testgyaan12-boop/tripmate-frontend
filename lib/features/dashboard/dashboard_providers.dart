@@ -10,6 +10,7 @@ class TripSummary {
   final double progress;
   final String statusLabel;
   final String ownerName;
+  final bool isOwner;
 
   TripSummary({
     required this.trip,
@@ -19,6 +20,7 @@ class TripSummary {
     required this.progress,
     required this.statusLabel,
     this.ownerName = '',
+    this.isOwner = false,
   });
 
   int get id => trip['id'] as int;
@@ -27,6 +29,8 @@ class TripSummary {
   String get kmLabel => TripStatus.kmLabel(trip);
   String get dateLabel => TripStatus.dateLabel(trip);
   int get daysCount => TripStatus.daysCount(trip);
+  String get rawStatus =>
+      (trip['status'] ?? 'AUTO').toString().toUpperCase();
 
   String get daysLabel {
     final d = daysCount;
@@ -43,6 +47,7 @@ class DashboardData {
 final dashboardProvider = FutureProvider<DashboardData>((ref) async {
   final dio = ref.watch(dioClientProvider).dio;
   final meRes = await dio.get('/api/users/me');
+  final meId = (meRes.data['data'] as Map)['id'];
   final tripsRes = await dio.get('/api/trips/mine');
   final List raw = tripsRes.data['data'] as List;
 
@@ -51,6 +56,7 @@ final dashboardProvider = FutureProvider<DashboardData>((ref) async {
     final id = t['id'];
     int members = 0, places = 0, itin = 0;
     String ownerName = '';
+    bool isOwner = false;
     try {
       final res = await Future.wait([
         dio.get('/api/trips/$id/members/detailed'),
@@ -64,6 +70,7 @@ final dashboardProvider = FutureProvider<DashboardData>((ref) async {
       for (final m in memberList) {
         if ((m['role']?.toString() ?? '') == 'OWNER') {
           ownerName = (m['name']?.toString() ?? '').trim();
+          isOwner = m['userId'] == meId;
           break;
         }
       }
@@ -78,6 +85,7 @@ final dashboardProvider = FutureProvider<DashboardData>((ref) async {
       places: places,
       itineraryItems: itin,
       ownerName: ownerName,
+      isOwner: isOwner,
       progress: TripStatus.progress(
         status: t['status']?.toString() ?? '',
         places: places,

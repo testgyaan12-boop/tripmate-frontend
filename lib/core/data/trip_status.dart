@@ -5,23 +5,36 @@ library;
 import 'package:intl/intl.dart';
 
 class TripStatus {
-  /// Returns the status label based on backend status, dates, and current time.
-  /// - Finalized: backend status is FINALIZED
-  /// - Upcoming: start date is in the future
-  /// - Completed: end date has passed
-  /// - Planning: default (trip is in progress or no dates set)
+  /// Returns the status label.
+  /// - Explicit backend status wins (PLANNING/UPCOMING/ONGOING/COMPLETED).
+  /// - AUTO (or missing) derives from dates:
+  ///   future start -> Upcoming, between dates -> Ongoing,
+  ///   past end -> Completed, no usable dates -> Planning.
+  /// - FINALIZED is shown as Completed (legacy value).
   static String statusLabel(Map<String, dynamic> trip) {
-    if ((trip['status'] ?? '') == 'FINALIZED') return 'Finalized';
+    final raw = (trip['status'] ?? '').toString().toUpperCase();
+    switch (raw) {
+      case 'FINALIZED':
+      case 'COMPLETED':
+        return 'Completed';
+      case 'PLANNING':
+        return 'Planning';
+      case 'UPCOMING':
+        return 'Upcoming';
+      case 'ONGOING':
+        return 'Ongoing';
+    }
     final now = DateTime.now();
     try {
-      if (trip['startDate'] != null &&
-          DateTime.parse(trip['startDate'].toString()).isAfter(now)) {
-        return 'Upcoming';
-      }
-      if (trip['endDate'] != null &&
-          DateTime.parse(trip['endDate'].toString()).isBefore(now)) {
-        return 'Completed';
-      }
+      final start = trip['startDate'] != null
+          ? DateTime.parse(trip['startDate'].toString())
+          : null;
+      final end = trip['endDate'] != null
+          ? DateTime.parse(trip['endDate'].toString())
+          : null;
+      if (start != null && start.isAfter(now)) return 'Upcoming';
+      if (end != null && end.isBefore(now)) return 'Completed';
+      if (start != null) return 'Ongoing';
     } catch (_) {}
     return 'Planning';
   }
@@ -33,6 +46,8 @@ class TripStatus {
         return 0xFF2563EB; // blue
       case 'Planning':
         return 0xFFF59E0B; // amber
+      case 'Ongoing':
+        return 0xFF14B8A6; // teal
       case 'Completed':
         return 0xFF10B981; // green
       case 'Finalized':
@@ -49,14 +64,14 @@ class TripStatus {
   /// - Places:        30% (at least 1 place added)
   /// - Itinerary:     30% (at least 1 itinerary item)
   /// - Members:       20% (2+ members, not just owner)
-  /// - Finalized:    100% (backend status FINALIZED)
+  /// - Finalized/Completed: 100%
   static double progress({
     required String status,
     required int places,
     required int itineraryItems,
     required int members,
   }) {
-    if (status == 'FINALIZED') return 1.0;
+    if (status == 'FINALIZED' || status == 'COMPLETED') return 1.0;
     final p = 0.2 +
         (places > 0 ? 0.3 : 0) +
         (itineraryItems > 0 ? 0.3 : 0) +
