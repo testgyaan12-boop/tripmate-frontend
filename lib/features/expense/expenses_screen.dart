@@ -216,17 +216,18 @@ class _State extends ConsumerState<ExpensesScreen> {
   Future<void> _delete(Map<String, dynamic> e) async {
     final id = (e['id'] as num?)?.toInt();
     if (id == null || _tripId == null) return;
+    final rootNav = Navigator.of(context, rootNavigator: true);
     final confirm = await showDialog<bool>(
-      context: context,
+      context: rootNav.context,
       builder: (_) => AlertDialog(
         title: const Text('Delete expense?'),
         content: Text('"${e['title']}" will be removed.'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => rootNav.pop(false),
               child: const Text('Cancel')),
           TextButton(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: () => rootNav.pop(true),
               child: const Text('Delete')),
         ],
       ),
