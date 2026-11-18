@@ -39,6 +39,16 @@ class TripStatus {
     return 'Planning';
   }
 
+  /// Sort priority for the dashboard trip list.
+  /// Ongoing first, then Upcoming, Planning and Completed.
+  static int order(String label) => switch (label) {
+        'Ongoing' => 0,
+        'Upcoming' => 1,
+        'Planning' => 2,
+        'Completed' => 3,
+        _ => 4,
+      };
+
   /// Color for the status chip.
   static int statusColor(String label) {
     switch (label) {

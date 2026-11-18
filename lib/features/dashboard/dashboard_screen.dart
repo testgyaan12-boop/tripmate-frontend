@@ -18,6 +18,18 @@ const _cardImages = [
   'assets/images/auth_travel.jpg',
 ];
 
+/// Ongoing → Upcoming → Planning → Completed. Same-status trips keep their
+/// original (server) order — Dart's sort is not stable, so index breaks ties.
+List<TripSummary> _orderedTrips(List<TripSummary> trips) {
+  final indexed = trips.asMap().entries.toList()
+    ..sort((a, b) {
+      final byStatus = TripStatus.order(a.value.statusLabel)
+          .compareTo(TripStatus.order(b.value.statusLabel));
+      return byStatus != 0 ? byStatus : a.key.compareTo(b.key);
+    });
+  return [for (final e in indexed) e.value];
+}
+
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
@@ -25,7 +37,8 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final data = ref.watch(dashboardProvider);
     final unread = ref.watch(unreadCountProvider).valueOrNull ?? 0;
-    final trips = data.valueOrNull?.trips ?? [];
+    final trips = _orderedTrips(
+        data.valueOrNull?.trips ?? const <TripSummary>[]);
     // Every Home tap refetches; any local write refreshes too.
     ref.listen(dataVersionProvider, (_, _) {
       ref.invalidate(dashboardProvider);
@@ -195,7 +208,7 @@ class _Body extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final trips = data.trips;
+    final trips = _orderedTrips(data.trips);
     return Column(
       children: [
         Padding(
@@ -256,8 +269,10 @@ class _MyTripsSection extends ConsumerStatefulWidget {
 }
 
 class _MyTripsSectionState extends ConsumerState<_MyTripsSection> {
+  static const _tabs = ['All', 'Ongoing', 'Upcoming', 'Planning', 'Completed'];
   bool _searching = false;
   String _query = '';
+  String _tab = 'All';
   final _ctrl = TextEditingController();
 
   @override
@@ -266,12 +281,19 @@ class _MyTripsSectionState extends ConsumerState<_MyTripsSection> {
     super.dispose();
   }
 
+  int _count(String tab) => tab == 'All'
+      ? widget.trips.length
+      : widget.trips.where((t) => t.statusLabel == tab).length;
+
   @override
   Widget build(BuildContext context) {
     final q = _query.trim().toLowerCase();
-    final visible = q.isEmpty
+    final byTab = _tab == 'All'
         ? widget.trips
-        : widget.trips
+        : widget.trips.where((t) => t.statusLabel == _tab).toList();
+    final visible = q.isEmpty
+        ? byTab
+        : byTab
             .where((t) =>
                 '${t.name} ${t.route} ${t.ownerName}'.toLowerCase().contains(q))
             .toList();
@@ -354,13 +376,40 @@ class _MyTripsSectionState extends ConsumerState<_MyTripsSection> {
             ],
           ),
         const SizedBox(height: 8),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (final tab in _tabs) ...[
+                _TripTabChip(
+                  label: '$tab ${_count(tab)}',
+                  selected: _tab == tab,
+                  onTap: () => setState(() => _tab = tab),
+                ),
+                const SizedBox(width: 8),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
         if (visible.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 20),
             child: Center(
-              child: Text(
-                'No trips found for "$_query"',
-                style: TextStyle(color: AppColors.textSecondary(context)),
+              child: Column(
+                children: [
+                  Text(
+                    _query.trim().isNotEmpty
+                        ? 'No trips found for "$_query"'
+                        : 'No $_tab trips yet',
+                    style: TextStyle(color: AppColors.textSecondary(context)),
+                  ),
+                  if (_tab != 'All')
+                    TextButton(
+                      onPressed: () => setState(() => _tab = 'All'),
+                      child: const Text('View all trips'),
+                    ),
+                ],
               ),
             ),
           )
@@ -767,6 +816,46 @@ class _MenuRow extends StatelessWidget {
         const SizedBox(width: 12),
         Text(label, style: TextStyle(fontSize: 14, color: c)),
       ],
+    );
+  }
+}
+
+class _TripTabChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _TripTabChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary : AppColors.inputFill(context),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color:
+                selected ? AppColors.primary : AppColors.cardBorder(context),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+            color:
+                selected ? Colors.white : AppColors.textSecondary(context),
+          ),
+        ),
+      ),
     );
   }
 }
