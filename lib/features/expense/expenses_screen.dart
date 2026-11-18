@@ -300,65 +300,26 @@ class _State extends ConsumerState<ExpensesScreen> {
       'TICKETS',
       'SHOPPING'
     ];
-    final ctrls = <String, TextEditingController>{
-      for (final c in cats)
-        c: TextEditingController(
-            text: _plannedOf(items, c) > 0
-                ? _plannedOf(items, c).toStringAsFixed(0)
-                : ''),
-    };
-    final ok = await showModalBottomSheet<bool>(
+
+    final result = await showModalBottomSheet<Map<String, double>>(
       context: context,
       isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          left: 16,
-          right: 16,
-          top: 16,
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text('Trip Budget',
-                  style:
-                      TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 12),
-              for (final c in ctrls.keys)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: TextField(
-                    controller: ctrls[c],
-                    keyboardType:
-                        const TextInputType.numberWithOptions(
-                            decimal: true),
-                    decoration: InputDecoration(
-                        labelText:
-                            '${ExpenseService.labelFor(c)} planned ₹',
-                        border: const OutlineInputBorder()),
-                  ),
-                ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Save budget'),
-              ),
-            ],
-          ),
-        ),
+      builder: (ctx) => _BudgetSheet(
+        items: items,
+        categories: cats,
       ),
     );
-    for (final c in ctrls.values) {
-      c.dispose();
-    }
-    if (ok != true || _tripId == null) return;
+    if (result == null || _tripId == null) return;
     try {
       final payload = <Map<String, dynamic>>[];
-      ctrls.forEach((cat, c) {
-        final v = double.tryParse(c.text.trim()) ?? 0;
-        if (v > 0) payload.add({'category': cat, 'planned': v});
-      });
+      for (final entry in result.entries) {
+        if (entry.value > 0) {
+          payload.add({
+            'category': entry.key,
+            'planned': entry.value,
+          });
+        }
+      }
       await ExpenseService(ref.read(dioClientProvider).dio)
           .saveBudget(_tripId!, payload);
       _load();
@@ -368,15 +329,6 @@ class _State extends ConsumerState<ExpensesScreen> {
             .showSnackBar(SnackBar(content: Text(apiErrorMessage(e))));
       }
     }
-  }
-
-  double _plannedOf(List<Map<String, dynamic>> items, String cat) {
-    for (final it in items) {
-      if ((it['category'] ?? '').toString() == cat) {
-        return ((it['planned'] as num?) ?? 0).toDouble();
-      }
-    }
-    return 0;
   }
 
   @override
@@ -626,6 +578,112 @@ class _State extends ConsumerState<ExpensesScreen> {
             ),
           );
         }).toList(),
+      ),
+    );
+  }
+}
+
+class _BudgetSheet extends StatefulWidget {
+  const _BudgetSheet({required this.items, required this.categories});
+  final List<Map<String, dynamic>> items;
+  final List<String> categories;
+
+  @override
+  State<_BudgetSheet> createState() => _BudgetSheetState();
+}
+
+class _BudgetSheetState extends State<_BudgetSheet> {
+  final Map<String, TextEditingController> _controllers = {};
+  final Map<String, FocusNode> _focusNodes = {};
+
+  @override
+  void initState() {
+    super.initState();
+    for (final c in widget.categories) {
+      final value = _plannedOf(c) > 0
+          ? _plannedOf(c).toStringAsFixed(0)
+          : '';
+      _controllers[c] = TextEditingController(text: value);
+      _focusNodes[c] = FocusNode();
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in _controllers.values) {
+      c.dispose();
+    }
+    for (final n in _focusNodes.values) {
+      n.dispose();
+    }
+    super.dispose();
+  }
+
+  double _plannedOf(String cat) {
+    for (final it in widget.items) {
+      if ((it['category'] ?? '').toString() == cat) {
+        return ((it['planned'] as num?) ?? 0).toDouble();
+      }
+    }
+    return 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 16,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Trip Budget',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 12),
+            for (final c in widget.categories)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: TextField(
+                  controller: _controllers[c],
+                  focusNode: _focusNodes[c],
+                  keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true),
+                  decoration: InputDecoration(
+                      labelText: '${ExpenseService.labelFor(c)} planned ₹',
+                      border: const OutlineInputBorder()),
+                ),
+              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop<Map<String, double>>();
+                  },
+                  child: const Text('Cancel'),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () {
+                    final result = <String, double>{
+                      for (final c in widget.categories)
+                        c: (double.tryParse(
+                                _controllers[c]?.text.trim() ?? '') ??
+                            0),
+                    };
+                    Navigator.of(context).pop(result);
+                  },
+                  child: const Text('Save budget'),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
